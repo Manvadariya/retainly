@@ -1,0 +1,20 @@
+--- a/C:/Users/manva/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_android-0.8.13/android/src/main/java/io/flutter/plugins/imagepicker/ImagePickerPlugin.java
++++ b/C:/Users/manva/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_android-0.8.13/android/src/main/java/io/flutter/plugins/imagepicker/ImagePickerPlugin.java
+@@ -16,7 +16,7 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin;
+ import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
+ import io.flutter.embedding.engine.plugins.lifecycle.HiddenLifecycleReference;
+-import io.flutter.embedding.engine.plugins.lifecycle.FlutterLifecycleAdapter;
++// import io.flutter.embedding.engine.plugins.lifecycle.FlutterLifecycleAdapter;
+ import io.flutter.plugin.common.BinaryMessenger;
+ import io.flutter.plugin.common.MethodCall;
+ import io.flutter.plugin.common.MethodChannel;
+@@ -129,7 +129,7 @@ public final class ImagePickerPlugin implements FlutterPlugin, ActivityAware, Met
+       activity = activityBinding.getActivity();
+       activityBinding.addActivityResultListener(delegate);
+       activityBinding.addRequestPermissionsResultListener(permissionManager);
+-      lifecycle = FlutterLifecycleAdapter.getActivityLifecycle(activityBinding);
++      lifecycle = ((HiddenLifecycleReference) activityBinding.getLifecycle()).getLifecycle();
+     }
+ 
+     private void disposeActivityHandler() {
