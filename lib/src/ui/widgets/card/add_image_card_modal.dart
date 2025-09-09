@@ -25,14 +25,60 @@ class AddImageCardModal extends StatefulWidget {
 class _AddImageCardModalState extends State<AddImageCardModal> {
   final _captionController = TextEditingController();
   File? _fileToShow;
+  bool _userInitiatedSave = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.imageFile != null) {
-      _fileToShow = widget.imageFile;
-    } else if (widget.imagePath != null) {
-      _fileToShow = File(widget.imagePath!);
+    _initializeImage();
+  }
+
+  Future<void> _initializeImage() async {
+    try {
+      if (widget.imageFile != null) {
+        print('AddImageCardModal: Using provided File object');
+        _fileToShow = widget.imageFile;
+      } else if (widget.imagePath != null) {
+        print(
+          'AddImageCardModal: Loading image from path: ${widget.imagePath}',
+        );
+        final file = File(widget.imagePath!);
+
+        if (await file.exists()) {
+          print(
+            'AddImageCardModal: File exists, size: ${await file.length()} bytes',
+          );
+          setState(() {
+            _fileToShow = file;
+          });
+        } else {
+          print(
+            'AddImageCardModal: Error - File does not exist at ${widget.imagePath}',
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Image file not found or inaccessible'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      } else {
+        print('AddImageCardModal: No image source provided');
+      }
+    } catch (e) {
+      print('AddImageCardModal: Error initializing image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading image: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -49,11 +95,20 @@ class _AddImageCardModalState extends State<AddImageCardModal> {
       child: BlocConsumer<AddCardBloc, AddCardState>(
         listener: (context, state) {
           if (state is AddCardSuccess) {
-            Navigator.of(context).pop(true);
-          } else if (state is AddCardFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Image saved successfully'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            // Only pop if the user initiated saving via the save button
+            if (_userInitiatedSave) {
+              Navigator.of(context).pop(true);
+            }
+          } else if (state is AddCardError) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(SnackBar(content: Text('Failed: ${state.error}')));
+            ).showSnackBar(SnackBar(content: Text('Failed: ${state.message}')));
           }
         },
         builder: (context, state) {
@@ -90,14 +145,69 @@ class _AddImageCardModalState extends State<AddImageCardModal> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  if (_fileToShow != null)
-                    AspectRatio(
-                      aspectRatio: 1,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(_fileToShow!, fit: BoxFit.cover),
-                      ),
-                    ),
+                  _fileToShow != null
+                      ? AspectRatio(
+                          aspectRatio: 1,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Builder(
+                              builder: (context) {
+                                try {
+                                  return Image.file(
+                                    _fileToShow!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      print(
+                                        'AddImageCardModal: Error rendering image: $error',
+                                      );
+                                      return Container(
+                                        color: Colors.grey[800],
+                                        child: const Center(
+                                          child: Icon(
+                                            Icons.broken_image,
+                                            color: Colors.white54,
+                                            size: 64,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                } catch (e) {
+                                  print(
+                                    'AddImageCardModal: Exception in image builder: $e',
+                                  );
+                                  return Container(
+                                    color: Colors.grey[800],
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.error_outline,
+                                        color: Colors.redAccent,
+                                        size: 64,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        )
+                      // Show placeholder if no image
+                      : AspectRatio(
+                          aspectRatio: 1,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.grey[800],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.image_not_supported,
+                                color: Colors.white54,
+                                size: 64,
+                              ),
+                            ),
+                          ),
+                        ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _captionController,
@@ -128,9 +238,12 @@ class _AddImageCardModalState extends State<AddImageCardModal> {
                       const SizedBox(width: 12),
                       ElevatedButton(
                         autofocus: widget.autofocusSave,
-                        onPressed: state is AddCardSaving
+                        onPressed: state is AddCardLoading
                             ? null
                             : () {
+                                // Mark that user initiated this save
+                                _userInitiatedSave = true;
+
                                 context.read<AddCardBloc>().add(
                                   AddImageCardRequested(
                                     imagePath: _fileToShow?.path ?? '',
@@ -145,7 +258,7 @@ class _AddImageCardModalState extends State<AddImageCardModal> {
                           backgroundColor: Colors.orangeAccent,
                           foregroundColor: Colors.white,
                         ),
-                        child: state is AddCardSaving
+                        child: state is AddCardLoading
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,

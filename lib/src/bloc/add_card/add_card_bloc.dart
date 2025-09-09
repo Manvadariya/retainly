@@ -8,6 +8,7 @@ import '../../data/repository/card_repository.dart';
 import 'add_card_event.dart';
 import 'add_card_state.dart';
 import '../../utils/image_storage.dart';
+import '../../utils/url_utils.dart';
 
 class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
   final CardRepository cardRepository;
@@ -17,13 +18,14 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     on<AddImageCardRequested>(_onAddImageCardRequested);
     on<AddLinkCardRequested>(_onAddLinkCardRequested);
     on<FetchTitleRequested>(_onFetchTitleRequested);
+    on<AddNewCard>(_onAddNewCard);
   }
 
   Future<void> _onAddTextCardRequested(
     AddTextCardRequested event,
     Emitter<AddCardState> emit,
   ) async {
-    emit(const AddCardSaving());
+    emit(const AddCardLoading());
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -32,6 +34,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
         content: event
             .content, // Using content as both title and body for simple notes
         body: event.content,
+        spaceId: event.spaceId, // Add to space if specified
         createdAt: now,
         updatedAt: now,
       );
@@ -39,7 +42,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
       final cardId = await cardRepository.addCard(card);
       emit(AddCardSuccess(cardId));
     } catch (e) {
-      emit(AddCardFailure(e.toString()));
+      emit(AddCardError(e.toString()));
     }
   }
 
@@ -47,12 +50,27 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     AddImageCardRequested event,
     Emitter<AddCardState> emit,
   ) async {
-    emit(const AddCardSaving());
+    emit(const AddCardLoading());
 
     try {
+      print('AddCardBloc: Processing image from path: ${event.imagePath}');
+      // Verify file exists and is readable
+      final input = File(event.imagePath);
+      if (!await input.exists()) {
+        throw Exception(
+          'Image file does not exist at path: ${event.imagePath}',
+        );
+      }
+
+      final fileSize = await input.length();
+      if (fileSize <= 0) {
+        throw Exception('Image file is empty (0 bytes)');
+      }
+
+      print('AddCardBloc: File exists with size: $fileSize bytes');
+
       // Persist image and thumbnail
       final storage = ImageStorage();
-      final input = File(event.imagePath);
       final (original, thumbnail) = await storage.saveImageWithThumbnail(input);
 
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -63,13 +81,21 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
             : 'Image',
         body: null,
         imagePath: original.path, // store original path
+        spaceId: event.spaceId, // Add to space if specified
         createdAt: now,
         updatedAt: now,
       );
+      print(
+        'AddCardBloc: Created card entity with image path: ${original.path}',
+      );
+
       final cardId = await cardRepository.addCard(card);
+      print('AddCardBloc: Successfully saved card with ID: $cardId');
+
       emit(AddCardSuccess(cardId));
     } catch (e) {
-      emit(AddCardFailure(e.toString()));
+      print('AddCardBloc: Error adding image card: $e');
+      emit(AddCardError(e.toString()));
     }
   }
 
@@ -77,7 +103,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     AddLinkCardRequested event,
     Emitter<AddCardState> emit,
   ) async {
-    emit(const AddCardSaving());
+    emit(const AddCardLoading());
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -85,6 +111,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
         type: 'link',
         content: event.title.trim(),
         url: event.url.trim(),
+        spaceId: event.spaceId, // Add to space if specified
         createdAt: now,
         updatedAt: now,
       );
@@ -92,7 +119,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
       final cardId = await cardRepository.addCard(card);
       emit(AddCardSuccess(cardId));
     } catch (e) {
-      emit(AddCardFailure(e.toString()));
+      emit(AddCardError(e.toString()));
     }
   }
 
@@ -103,26 +130,33 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     emit(const TitleFetching());
 
     try {
-      // Normalize URL and ensure scheme
+      // Use the URL utils class for URL normalization
       String raw = event.url.trim();
       if (raw.isEmpty) {
-        emit(const AddCardFailure('Empty URL'));
+        emit(const AddCardError('Empty URL'));
         return;
       }
 
-      if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
-        raw = 'https://$raw';
-      }
+      // Enhanced URL normalization with UrlUtils
+      String normalizedUrl = UrlUtils.normalizeUrl(raw);
+      print('Normalized URL for fetching: $normalizedUrl');
 
-      final uri = Uri.tryParse(raw);
+      final uri = Uri.tryParse(normalizedUrl);
       if (uri == null) {
-        emit(const AddCardFailure('Invalid URL'));
+        emit(const AddCardError('Invalid URL'));
         return;
       }
+
+      // Create a fallback title immediately (we'll use this if fetching fails)
+      String fallbackTitle = uri.host;
+
+      // If host includes www, remove it
+      fallbackTitle = fallbackTitle.replaceAll(RegExp(r'^www\.'), '');
 
       final client = http.Client();
-      http.Response response;
+      http.Response? response;
       try {
+        print('Attempting HTTP request to $uri');
         response = await client
             .get(
               uri,
@@ -135,30 +169,41 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
                 'Cache-Control': 'no-cache',
               },
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(const Duration(seconds: 5));
+
+        print('Got response with status code: ${response.statusCode}');
       } on TimeoutException {
         client.close();
-        emit(const AddCardFailure('Connection timed out while fetching title'));
+        print('Timeout fetching title from URL: $raw');
+        emit(TitleFetched(fallbackTitle));
         return;
       } on SocketException catch (e) {
         client.close();
-        emit(AddCardFailure('Network error: ${e.message}'));
+        print('Network error fetching title: ${e.message}');
+        emit(TitleFetched(fallbackTitle));
         return;
       } catch (e) {
         client.close();
-        emit(AddCardFailure('Request failed: $e'));
+        print('Request failed fetching title: $e');
+        emit(TitleFetched(fallbackTitle));
         return;
       }
       client.close();
 
       if (response.statusCode == 200) {
-        var document = parser.parse(response.body);
-        var titleElements = document.getElementsByTagName('title');
+        try {
+          var document = parser.parse(response.body);
+          var titleElements = document.getElementsByTagName('title');
 
-        if (titleElements.isNotEmpty) {
-          String title = titleElements.first.text.trim();
-          emit(TitleFetched(title));
-        } else {
+          if (titleElements.isNotEmpty) {
+            String title = titleElements.first.text.trim();
+            if (title.isNotEmpty) {
+              print('Found title tag: $title');
+              emit(TitleFetched(title));
+              return;
+            }
+          }
+
           // Try to find meta tag with og:title
           var metaTags = document.getElementsByTagName('meta');
           var ogTitle = metaTags.firstWhere(
@@ -171,28 +216,41 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
 
           if (ogTitle.attributes.containsKey('content') &&
               ogTitle.attributes['content']!.isNotEmpty) {
+            print('Found og:title: ${ogTitle.attributes['content']}');
             emit(TitleFetched(ogTitle.attributes['content']!));
-          } else {
-            // Fallback to URL without protocol and www
-            String fallbackTitle = raw
-                .replaceAll(RegExp(r'^https?://'), '')
-                .replaceAll(RegExp(r'^www\.'), '');
-
-            // If there's a path, just use the domain
-            if (fallbackTitle.contains('/')) {
-              fallbackTitle = fallbackTitle.split('/').first;
-            }
-
-            emit(TitleFetched(fallbackTitle));
+            return;
           }
+        } catch (e) {
+          print('Error parsing HTML: $e');
         }
-      } else {
-        emit(
-          AddCardFailure('Could not load page: HTTP ${response.statusCode}'),
-        );
       }
+
+      // If we got here, we need to use the fallback
+      print('Using fallback title: $fallbackTitle');
+      emit(TitleFetched(fallbackTitle));
     } catch (e) {
-      emit(AddCardFailure('Failed to fetch title: ${e.toString()}'));
+      print('Unexpected error in _onFetchTitleRequested: $e');
+      // Don't fail completely, use domain name
+      final domain = event.url
+          .replaceAll(RegExp(r'^https?://'), '')
+          .replaceAll(RegExp(r'^www\.'), '')
+          .split('/')
+          .first;
+      emit(TitleFetched(domain));
+    }
+  }
+
+  Future<void> _onAddNewCard(
+    AddNewCard event,
+    Emitter<AddCardState> emit,
+  ) async {
+    emit(const AddCardLoading());
+
+    try {
+      final cardId = await cardRepository.addCard(event.card);
+      emit(AddCardSuccess(cardId));
+    } catch (e) {
+      emit(AddCardError(e.toString()));
     }
   }
 }

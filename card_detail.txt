@@ -1,0 +1,962 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:video_player/video_player.dart';
+import 'package:url_launcher/url_launcher.dart' as url_launcher;
+
+import '../../utils/url_utils.dart';
+
+import '../../data/card_entity.dart';
+import '../../data/repository/card_repository.dart';
+
+class CardDetailScreen extends StatefulWidget {
+  final int cardId;
+
+  const CardDetailScreen({super.key, required this.cardId});
+
+  @override
+  State<CardDetailScreen> createState() => _CardDetailScreenState();
+}
+
+class _CardDetailScreenState extends State<CardDetailScreen>
+    with SingleTickerProviderStateM                    // Add a more obvious open URL button
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final String url = card.url!;
+                  print('Opening URL from button: $url');
+                  _launchUrl(url);
+                },
+                icon: const Icon(Icons.open_in_browser),
+                label: const Text('Open Link'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  textStyle: const TextStyle(fontSize: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),re<CardEntity?> _cardFuture;
+  VideoPlayerController? _videoController;
+  final CardRepository _repository = CardRepository();
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _cardFuture = _loadCard();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
+    _animationController.forward();
+  }
+
+  Future<CardEntity?> _loadCard() async {
+    try {
+      final cards = await _repository.getAllCards();
+      return cards.firstWhere((card) => card.id == widget.cardId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _initVideoPlayer(String path) {
+    if (_videoController != null) {
+      _videoController!.dispose();
+    }
+
+    if (path.startsWith('http')) {
+      _videoController = VideoPlayerController.networkUrl(Uri.parse(path));
+    } else {
+      _videoController = VideoPlayerController.file(File(path));
+    }
+
+    _videoController!.initialize().then((_) {
+      if (mounted) setState(() {});
+      _videoController!.play();
+    });
+  }
+
+  void _showDeleteConfirmation(CardEntity card) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Card',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: Text(
+          'Are you sure you want to delete "${card.content}"?',
+          style: const TextStyle(color: Colors.white70),
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.red.withOpacity(0.2),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () async {
+              if (card.id != null) {
+                await _repository.deleteCard(card.id!);
+                if (mounted) {
+                  Navigator.of(context).pop(); // Close dialog
+                  Navigator.of(context).pop(true); // Go back with result
+                }
+              }
+            },
+            child: const Text(
+              'DELETE',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareCard(CardEntity card) async {
+    bool success = true;
+    try {
+      switch (card.type) {
+        case 'text':
+          await Share.share(card.body ?? card.content);
+          break;
+        case 'image':
+          if (card.imagePath != null) {
+            if (card.imagePath!.startsWith('http')) {
+              // For network image, share the URL
+              await Share.share('Check out this image: ${card.imagePath}');
+            } else {
+              // For local image, share the file
+              await Share.shareXFiles([
+                XFile(card.imagePath!),
+              ], text: card.content);
+            }
+          } else {
+            success = false;
+          }
+          break;
+        case 'video':
+          if (card.imagePath != null) {
+            if (card.imagePath!.startsWith('http')) {
+              // For network video, share the URL
+              await Share.share('Check out this video: ${card.imagePath}');
+            } else {
+              // For local video, share the file
+              await Share.shareXFiles([
+                XFile(card.imagePath!),
+              ], text: card.content);
+            }
+          } else {
+            success = false;
+          }
+          break;
+        case 'link':
+          if (card.url != null) {
+            await Share.share('${card.content}: ${card.url}');
+          } else {
+            success = false;
+          }
+          break;
+      }
+
+      // Show success message
+      if (mounted && success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Card shared successfully'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to share card'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getFormattedDate(DateTime date) {
+    return '${date.day} ${_getMonthName(date.month)} ${date.year}, ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month - 1];
+  }
+
+  String _getCardTypeTitle(String type) {
+    switch (type) {
+      case 'text':
+        return 'Text Card';
+      case 'image':
+        return 'Image Card';
+      case 'video':
+        return 'Video Card';
+      case 'link':
+        return 'Link Card';
+      default:
+        return 'Card';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Check if we're on a tablet
+    final isTablet = MediaQuery.of(context).size.width > 600;
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: FutureBuilder<CardEntity?>(
+        future: _cardFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Scaffold(
+              appBar: AppBar(
+                backgroundColor: const Color(0xFF1E1E1E),
+                elevation: 0,
+              ),
+              backgroundColor: const Color(0xFF121212),
+              body: const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.orangeAccent,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Error'),
+                backgroundColor: const Color(0xFF1E1E1E),
+                elevation: 0,
+              ),
+              backgroundColor: const Color(0xFF121212),
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.grey[700],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Card not found',
+                      style: TextStyle(
+                        fontSize: isTablet ? 22 : 18,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orangeAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Go Back'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final card = snapshot.data!;
+          final createdDate = DateTime.fromMillisecondsSinceEpoch(
+            card.createdAt,
+          );
+          final formattedDate = _getFormattedDate(createdDate);
+
+          // Initialize video player if it's a video card
+          if (card.type == 'video' &&
+              card.imagePath != null &&
+              _videoController == null) {
+            _initVideoPlayer(card.imagePath!);
+          }
+
+          return Scaffold(
+            appBar: AppBar(
+              backgroundColor: const Color(0xFF1E1E1E),
+              elevation: 0,
+              centerTitle: true,
+              title: Text(
+                _getCardTypeTitle(card.type),
+                style: TextStyle(
+                  fontSize: isTablet ? 20 : 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.share, color: Colors.white),
+                  tooltip: 'Share card',
+                  onPressed: () => _shareCard(card),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  tooltip: 'Delete card',
+                  onPressed: () => _showDeleteConfirmation(card),
+                ),
+                const SizedBox(width: 8), // Add some padding to the right
+              ],
+            ),
+            backgroundColor: const Color(0xFF121212),
+            body: Hero(
+              tag: 'card-${card.id ?? card.createdAt}',
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Expanded(child: _buildCardDetailContent(card, isTablet)),
+                    _buildFooter(formattedDate),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFooter(String formattedDate) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, -1),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.access_time, size: 16, color: Colors.grey),
+          const SizedBox(width: 8),
+          Text(
+            'Created on $formattedDate',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardDetailContent(CardEntity card, bool isTablet) {
+    switch (card.type) {
+      case 'text':
+        return _buildTextDetail(card, isTablet);
+      case 'image':
+        return _buildImageDetail(card, isTablet);
+      case 'video':
+        return _buildVideoDetail(card, isTablet);
+      case 'link':
+        return _buildLinkDetail(card, isTablet);
+      default:
+        return _buildTextDetail(card, isTablet);
+    }
+  }
+
+  Widget _buildTextDetail(CardEntity card, bool isTablet) {
+    final double titleSize = isTablet ? 28 : 24;
+    final double bodySize = isTablet ? 20 : 18;
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            card.content,
+            style: TextStyle(
+              fontSize: titleSize,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            height: 1,
+            color: Colors.grey.withOpacity(0.2),
+            margin: const EdgeInsets.symmetric(vertical: 16),
+          ),
+          if (card.body != null)
+            SelectableText(
+              card.body!,
+              style: TextStyle(
+                fontSize: bodySize,
+                height: 1.4,
+                color: Colors.white,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageDetail(CardEntity card, bool isTablet) {
+    if (card.imagePath == null) {
+      return const Center(child: Text('No image available'));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            card.content,
+            style: TextStyle(
+              fontSize: isTablet ? 24 : 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: card.imagePath!.startsWith('http')
+                  ? PhotoView(
+                      imageProvider: NetworkImage(card.imagePath!),
+                      minScale: PhotoViewComputedScale.contained,
+                      maxScale: PhotoViewComputedScale.covered * 2,
+                      backgroundDecoration: const BoxDecoration(
+                        color: Colors.black,
+                      ),
+                    )
+                  : PhotoView(
+                      imageProvider: FileImage(File(card.imagePath!)),
+                      minScale: PhotoViewComputedScale.contained,
+                      maxScale: PhotoViewComputedScale.covered * 2,
+                      backgroundDecoration: const BoxDecoration(
+                        color: Colors.black,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        if (card.body != null && card.body!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              card.body!,
+              style: TextStyle(
+                fontSize: isTablet ? 16 : 14,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildVideoDetail(CardEntity card, bool isTablet) {
+    if (card.imagePath == null || _videoController == null) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+        ),
+      );
+    }
+
+    if (!_videoController!.value.isInitialized) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            card.content,
+            style: TextStyle(
+              fontSize: isTablet ? 24 : 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: _videoController!.value.aspectRatio,
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      VideoPlayer(_videoController!),
+                      _ControlsOverlay(controller: _videoController!),
+                      VideoProgressIndicator(
+                        _videoController!,
+                        allowScrubbing: true,
+                        colors: const VideoProgressColors(
+                          playedColor: Colors.orangeAccent,
+                          bufferedColor: Colors.white24,
+                          backgroundColor: Colors.white10,
+                        ),
+                        padding: const EdgeInsets.all(16.0),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (card.body != null && card.body!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              card.body!,
+              style: TextStyle(
+                fontSize: isTablet ? 16 : 14,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLinkDetail(CardEntity card, bool isTablet) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            card.content,
+            style: TextStyle(
+              fontSize: isTablet ? 28 : 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (card.url != null) ...[
+            GestureDetector(
+              onTap: () => _launchUrl(card.url!),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.purpleAccent.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.link, color: Colors.purpleAccent),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'URL',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            card.url!,
+                            style: const TextStyle(
+                              color: Colors.blueAccent,
+                              decoration: TextDecoration.underline,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => _launchUrl(card.url!),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blueAccent.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.open_in_new,
+                          color: Colors.blueAccent,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    // Add an explicit Open button
+                    IconButton(
+                      onPressed: () => _launchUrl(card.url!),
+                      icon: const Icon(Icons.open_in_browser),
+                      tooltip: 'Open URL',
+                      color: Colors.blueAccent,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Add a more obvious open URL button
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final String url = card.url!;
+                  print('Opening URL from button: $url');
+                  _launchUrl(url);
+                },
+                icon: const Icon(Icons.open_in_browser),
+                label: const Text('Open Link'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  textStyle: const TextStyle(fontSize: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+          if (card.imagePath != null) ...[
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: card.imagePath!.startsWith('http')
+                    ? Image.network(
+                        card.imagePath!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _buildErrorImage(),
+                      )
+                    : Image.file(
+                        File(card.imagePath!),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _buildErrorImage(),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+          if (card.body != null && card.body!.isNotEmpty) ...[
+            const Divider(color: Colors.grey, height: 32),
+            Text(
+              card.body!,
+              style: TextStyle(
+                fontSize: isTablet ? 18 : 16,
+                color: Colors.white,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorImage() {
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.broken_image, color: Colors.grey[400], size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Image not available',
+              style: TextStyle(color: Colors.grey[400]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchUrl(String urlString) async {
+    try {
+      print('Attempting to launch URL: $urlString');
+      if (urlString.isEmpty) {
+        throw Exception('URL is empty');
+      }
+
+      // Enhanced URL normalization
+      String normalizedUrl = urlString.trim();
+
+      try {
+        // Handle common URL schemes
+        if (normalizedUrl.startsWith('www.')) {
+          normalizedUrl = 'https://$normalizedUrl';
+          print('Added https:// to www. URL: $normalizedUrl');
+        } else if (!normalizedUrl.contains('://')) {
+          // Check if it might be an email
+          if (RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(normalizedUrl)) {
+            normalizedUrl = 'mailto:$normalizedUrl';
+            print('Converting to mailto scheme: $normalizedUrl');
+          }
+          // Check if it might be a phone number
+          else if (RegExp(r'^\+?[\d\s\-()]{5,}$').hasMatch(normalizedUrl)) {
+            normalizedUrl =
+                'tel:${normalizedUrl.replaceAll(RegExp(r'[\s\-()]'), '')}';
+            print('Converting to tel scheme: $normalizedUrl');
+          }
+          // Default to https for web URLs
+          else {
+            normalizedUrl = 'https://$normalizedUrl';
+            print('Defaulting to https scheme: $normalizedUrl');
+          }
+        }
+
+        final Uri url = Uri.parse(normalizedUrl);
+        print('Parsed URI: $url');
+
+        // Force launch with external application
+        print('Launching URL with external application');
+        final bool result = await url_launcher.launchUrl(
+          url,
+          mode: url_launcher.LaunchMode.externalApplication,
+        );
+
+        if (!result) {
+          throw Exception('Could not launch URL: $normalizedUrl');
+        }
+        print('URL launch successful');
+        return;
+      } catch (e) {
+        print('Error during URL parsing/launching: $e');
+        
+        // Try a more permissive approach
+        try {
+          // Just try to launch with the original URL as a fallback
+          final fallbackUrl = Uri.parse('https://${urlString.trim()}');
+          final result = await url_launcher.launchUrl(
+            fallbackUrl,
+            mode: url_launcher.LaunchMode.externalApplication,
+          );
+          
+          if (result) {
+            print('Fallback URL launch successful');
+            return;
+          }
+        } catch (fallbackError) {
+          print('Fallback launch also failed: $fallbackError');
+        }
+        
+        throw Exception('Failed to open link');
+      }
+    } catch (e) {
+      print('Error launching URL: $e');
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open URL: ${e.toString()}'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+}
+
+class _ControlsOverlay extends StatefulWidget {
+  const _ControlsOverlay({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  State<_ControlsOverlay> createState() => _ControlsOverlayState();
+}
+
+class _ControlsOverlayState extends State<_ControlsOverlay> {
+  bool _hideControls = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _hideControls = !_hideControls;
+        });
+      },
+      child: AnimatedOpacity(
+        opacity: _hideControls ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 300),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withOpacity(0.0),
+                Colors.black.withOpacity(0.5),
+              ],
+            ),
+          ),
+          child: Center(
+            child: IconButton(
+              onPressed: () {
+                setState(() {
+                  widget.controller.value.isPlaying
+                      ? widget.controller.pause()
+                      : widget.controller.play();
+                });
+              },
+              icon: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  widget.controller.value.isPlaying
+                      ? Icons.pause
+                      : Icons.play_arrow,
+                  size: 32.0,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

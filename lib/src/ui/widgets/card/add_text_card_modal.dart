@@ -25,6 +25,7 @@ class _AddTextCardModalState extends State<AddTextCardModal> {
   final List<String> _tags = [];
   final _tagController = TextEditingController();
   bool _isSaveEnabled = false;
+  bool _userInitiatedSave = false;
 
   @override
   void initState() {
@@ -76,11 +77,20 @@ class _AddTextCardModalState extends State<AddTextCardModal> {
       child: BlocConsumer<AddCardBloc, AddCardState>(
         listener: (context, state) {
           if (state is AddCardSuccess) {
-            Navigator.of(context).pop(true);
-          } else if (state is AddCardFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Note saved successfully'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            // Only pop if the user initiated saving via the save button
+            if (_userInitiatedSave) {
+              Navigator.of(context).pop(true);
+            }
+          } else if (state is AddCardError) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(SnackBar(content: Text('Failed: ${state.error}')));
+            ).showSnackBar(SnackBar(content: Text('Failed: ${state.message}')));
           }
         },
         builder: (context, state) {
@@ -229,10 +239,13 @@ class _AddTextCardModalState extends State<AddTextCardModal> {
                         // Save button
                         ElevatedButton(
                           autofocus: widget.autofocusSave,
-                          onPressed: _isSaveEnabled && state is! AddCardSaving
+                          onPressed: _isSaveEnabled && state is! AddCardLoading
                               ? () {
                                   if (_formKey.currentState?.validate() ??
                                       false) {
+                                    // Mark that user initiated this save action
+                                    _userInitiatedSave = true;
+
                                     context.read<AddCardBloc>().add(
                                       AddTextCardRequested(
                                         content: _textController.text.trim(),
@@ -251,7 +264,7 @@ class _AddTextCardModalState extends State<AddTextCardModal> {
                               vertical: 12,
                             ),
                           ),
-                          child: state is AddCardSaving
+                          child: state is AddCardLoading
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,

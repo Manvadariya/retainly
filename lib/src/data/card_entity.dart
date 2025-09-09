@@ -8,6 +8,7 @@ class CardEntity {
   final String? body; // full note text (nullable)
   final String? imagePath; // local file path (nullable)
   final String? url; // original URL if link (nullable)
+  final int? spaceId; // ID of the space this card belongs to (nullable)
   final int createdAt; // epoch millis
   final int updatedAt; // epoch millis
 
@@ -18,9 +19,15 @@ class CardEntity {
     this.body,
     this.imagePath,
     this.url,
+    this.spaceId,
     required this.createdAt,
     required this.updatedAt,
   });
+
+  @override
+  String toString() {
+    return 'CardEntity(id: $id, type: $type, content: $content, body: ${body?.substring(0, body!.length > 20 ? 20 : body!.length)}..., imagePath: $imagePath, url: $url, spaceId: $spaceId)';
+  }
 
   CardEntity copyWith({
     int? id,
@@ -29,6 +36,7 @@ class CardEntity {
     String? body,
     String? imagePath,
     String? url,
+    int? spaceId,
     int? createdAt,
     int? updatedAt,
   }) {
@@ -39,6 +47,7 @@ class CardEntity {
       body: body ?? this.body,
       imagePath: imagePath ?? this.imagePath,
       url: url ?? this.url,
+      spaceId: spaceId ?? this.spaceId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

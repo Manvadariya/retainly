@@ -54,7 +54,11 @@ class _SplashScreenState extends State<SplashScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: const [
-              Icon(Icons.lock_outline, size: 72),
+              Image(
+                image: AssetImage('assets/images/brain_logo.png'),
+                width: 180,
+                height: 180,
+              ),
               SizedBox(height: 16),
               Text('Retainly', style: TextStyle(fontSize: 20)),
             ],

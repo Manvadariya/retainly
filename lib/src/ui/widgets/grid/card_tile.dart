@@ -243,12 +243,39 @@ class _CardTileState extends State<CardTile>
     // Don't use setState at all during build - we'll just render directly
     // The loading state will be updated separately after the widget is built
 
-    // For images
-    if (widget.card.type == 'image' && widget.card.imagePath != null) {
-      return _buildImageWidget(widget.card.imagePath!);
-    }
+    print(
+      'CardTile: Building thumbnail for card type: ${widget.card.type}, ID: ${widget.card.id}',
+    );
 
-    // For videos (just showing thumbnail)
+    // For images
+    if (widget.card.type == 'image') {
+      print('CardTile: Found image card, image path: ${widget.card.imagePath}');
+
+      if (widget.card.imagePath != null && widget.card.imagePath!.isNotEmpty) {
+        // Log the attempt to load the image
+        print(
+          'CardTile: Attempting to load image from: ${widget.card.imagePath}',
+        );
+
+        // Trigger async verification without blocking the UI
+        _verifyImageFile(widget.card.imagePath!);
+
+        // Check synchronously if file exists before trying to load
+        final file = File(widget.card.imagePath!);
+        if (!widget.card.imagePath!.startsWith('http') && !file.existsSync()) {
+          print(
+            'CardTile: Image file does not exist at: ${widget.card.imagePath}',
+          );
+          return _buildPlaceholderWithIcon(Icons.image_not_supported);
+        }
+
+        // File exists or is remote, try to display it
+        return _buildImageWidget(widget.card.imagePath!);
+      } else {
+        print('CardTile: WARNING - Image card has null or empty imagePath!');
+        return _buildPlaceholderWithIcon(Icons.image_not_supported);
+      }
+    } // For videos (just showing thumbnail)
     if (widget.card.type == 'video' && widget.card.imagePath != null) {
       return _buildImageWidget(widget.card.imagePath!);
     }
@@ -305,29 +332,80 @@ class _CardTileState extends State<CardTile>
     return _buildPlaceholderWithIcon(Icons.note);
   }
 
+  // Verify image file exists and log the result
+  Future<void> _verifyImageFile(String path) async {
+    try {
+      final file = File(path);
+      final exists = await file.exists();
+      print('CardTile: Image file exists? $exists at path: $path');
+      if (!exists) {
+        print('CardTile: WARNING - Image file not found: $path');
+      } else {
+        final size = await file.length();
+        print('CardTile: Image file size: ${size / 1024}KB');
+      }
+    } catch (e) {
+      print('CardTile: Error checking image file: $e');
+    }
+  }
+
   Widget _buildImageWidget(String path) {
+    print('CardTile: Attempting to display image from path: $path');
+
     // Remote image (URL starts with http)
     if (path.startsWith('http')) {
+      print('CardTile: Loading remote image');
       return CachedNetworkImage(
         imageUrl: path,
         fit: BoxFit.cover,
         placeholder: (context, url) => _buildShimmerEffect(),
-        errorWidget: (context, url, error) =>
-            _buildPlaceholderWithIcon(Icons.broken_image),
+        errorWidget: (context, url, error) {
+          print('CardTile: Error loading remote image: $error');
+          return _buildPlaceholderWithIcon(Icons.broken_image);
+        },
         fadeInDuration: const Duration(milliseconds: 300),
       );
     }
 
     // Local file
+    print('CardTile: Loading local file image');
     try {
+      final file = File(path);
+      final exists = file.existsSync();
+      print('CardTile: File exists? $exists at path: $path');
+
+      // If the file doesn't exist, immediately show the placeholder
+      if (!exists) {
+        print('CardTile: File does not exist, showing placeholder');
+        return _buildPlaceholderWithIcon(Icons.broken_image);
+      }
+
+      // Check file size
+      final size = file.lengthSync();
+      print('CardTile: File size: ${size / 1024}KB');
+
+      if (size == 0) {
+        print('CardTile: File is empty, showing placeholder');
+        return _buildPlaceholderWithIcon(Icons.broken_image);
+      }
+
+      // Attempt to load the image file
       return Image.file(
-        File(path),
+        file,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
+          print('CardTile: Error loading local image: $error');
           return _buildPlaceholderWithIcon(Icons.broken_image);
+        },
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (frame == null) {
+            return _buildShimmerEffect(); // Show shimmer while loading
+          }
+          return child; // Show the image once loaded
         },
       );
     } catch (e) {
+      print('CardTile: Exception loading local image: $e');
       return _buildPlaceholderWithIcon(Icons.broken_image);
     }
   }

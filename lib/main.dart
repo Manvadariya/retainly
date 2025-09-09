@@ -35,11 +35,23 @@ void main() async {
 
 void _handleSharedMedia(SharedMedia media) async {
   final nav = globalNavigatorKey.currentState;
-  if (nav == null) return;
+  if (nav == null) {
+    print('Share handler: Navigator not available');
+    return;
+  }
+
+  print('Share handler: Received shared media');
+
+  // Ensure we're on a stable context before showing any UI
+  await Future.delayed(const Duration(milliseconds: 500));
 
   // Handle text content (plain text or URL)
   if (media.content != null && media.content!.isNotEmpty) {
     final text = media.content!.trim();
+    print(
+      'Share handler: Received text content: \"${text.length > 50 ? text.substring(0, 50) + '...' : text}\"',
+    );
+
     final lower = text.toLowerCase();
     final isLikelyUrl =
         lower.startsWith('http://') ||
@@ -48,49 +60,101 @@ void _handleSharedMedia(SharedMedia media) async {
 
     if (isLikelyUrl) {
       // URL content - open Link Card Modal
-      nav.push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) =>
-              AddLinkCardModal(initialUrl: text, autofocusSave: true),
-        ),
-      );
+      print('Share handler: Opening Link Card Modal with URL: $text');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nav
+            .push(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (_) =>
+                    AddLinkCardModal(initialUrl: text, autofocusSave: true),
+              ),
+            )
+            .then((value) {
+              print('Share handler: Link modal closed with result: $value');
+            });
+      });
     } else {
       // Plain text content - open Text Card Modal
-      nav.push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) =>
-              AddTextCardModal(initialText: text, autofocusSave: true),
-        ),
-      );
+      print('Share handler: Opening Text Card Modal');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nav
+            .push(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (_) =>
+                    AddTextCardModal(initialText: text, autofocusSave: true),
+              ),
+            )
+            .then((value) {
+              print('Share handler: Text modal closed with result: $value');
+            });
+      });
     }
   }
   // Handle image attachments
   else if (media.attachments != null && media.attachments!.isNotEmpty) {
+    print('Share handler: Received ${media.attachments!.length} attachment(s)');
+
     // Try to find an image attachment
     final firstImage = media.attachments!.firstWhere(
       (a) => a?.type == SharedAttachmentType.image && a?.path != null,
       orElse: () => null,
     );
 
-    final path = firstImage?.path;
-    if (path != null && File(path).existsSync()) {
-      // Image found - open Image Card Modal
-      nav.push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) =>
-              AddImageCardModal(imagePath: path, autofocusSave: true),
-        ),
+    if (firstImage == null) {
+      print('Share handler: No valid image attachment found');
+      _showUnsupportedTypeMessage(
+        nav.context,
+        "No valid image found in shared content",
       );
-    } else {
-      // Image attachment declared but file not accessible
-      _showUnsupportedTypeMessage(nav.context, "Image file not accessible");
+      return;
+    }
+
+    final path = firstImage.path;
+    print('Share handler: Image path from attachment: $path');
+
+    try {
+      final file = File(path);
+      final exists = await file.exists();
+
+      if (exists) {
+        final fileSize = await file.length();
+        print('Share handler: File exists at path, size: $fileSize bytes');
+
+        // Image found - open Image Card Modal with slight delay to ensure UI stability
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          nav
+              .push(
+                MaterialPageRoute(
+                  fullscreenDialog: true,
+                  builder: (_) =>
+                      AddImageCardModal(imagePath: path, autofocusSave: true),
+                ),
+              )
+              .then((value) {
+                // Log the result of the modal closing
+                print('Share handler: Image modal closed with result: $value');
+              });
+        });
+      } else {
+        print('Share handler: File does not exist at path: $path');
+        _showUnsupportedTypeMessage(
+          nav.context,
+          "Image file not found at specified location",
+        );
+      }
+    } catch (e) {
+      print('Share handler: Error accessing image file: $e');
+      _showUnsupportedTypeMessage(
+        nav.context,
+        "Error accessing image: ${e.toString()}",
+      );
     }
   }
   // No supported content found
   else {
+    print('Share handler: No supported content found in shared media');
     _showUnsupportedTypeMessage(nav.context, "Unsupported share type");
   }
 }

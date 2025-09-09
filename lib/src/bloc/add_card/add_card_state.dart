@@ -11,8 +11,9 @@ class AddCardIdle extends AddCardState {
   const AddCardIdle();
 }
 
-class AddCardSaving extends AddCardState {
-  const AddCardSaving();
+// Renamed from AddCardSaving to make it more explicit in modal files
+class AddCardLoading extends AddCardState {
+  const AddCardLoading();
 }
 
 class AddCardSuccess extends AddCardState {
@@ -24,13 +25,14 @@ class AddCardSuccess extends AddCardState {
   List<Object> get props => [cardId];
 }
 
-class AddCardFailure extends AddCardState {
-  final String error;
+// Renamed from AddCardFailure to make it more explicit in modal files
+class AddCardError extends AddCardState {
+  final String message;
 
-  const AddCardFailure(this.error);
+  const AddCardError(this.message);
 
   @override
-  List<Object> get props => [error];
+  List<Object> get props => [message];
 }
 
 class TitleFetching extends AddCardState {

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../data/card_entity.dart';
 import '../../../data/repository/card_repository.dart';
 import '../../../ui/theme/app_theme.dart';
+import '../../../utils/url_utils.dart';
 
 /// Shows a fullscreen preview overlay when a card is long-pressed
 class CardPreviewOverlay extends StatelessWidget {
@@ -326,10 +327,7 @@ class DismissibleCardPreview extends StatelessWidget {
                   // URL - clickable
                   if (card.url != null && card.url!.isNotEmpty)
                     GestureDetector(
-                      onTap: () {
-                        // You can add URL launching functionality here
-                        // using url_launcher package
-                      },
+                      onTap: () => _launchUrlFromPreview(context, card.url!),
                       child: Text(
                         card.url!,
                         style: TextStyle(
@@ -339,6 +337,28 @@ class DismissibleCardPreview extends StatelessWidget {
                         ),
                       ),
                     ),
+
+                  // Add Open URL button
+                  if (card.url != null && card.url!.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () =>
+                          _launchUrlFromPreview(context, card.url!),
+                      icon: const Icon(Icons.open_in_browser),
+                      label: const Text('Open Link'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -346,6 +366,15 @@ class DismissibleCardPreview extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // Launch URL with proper error handling
+  Future<void> _launchUrlFromPreview(
+    BuildContext context,
+    String urlString,
+  ) async {
+    print('Using UrlUtils to launch URL from preview: $urlString');
+    await UrlUtils.launchUrl(urlString, context: context, showError: true);
   }
 
   // Show delete confirmation dialog

@@ -6,7 +6,9 @@ import '../theme/app_theme.dart';
 import '../../bloc/main_grid/main_grid_bloc.dart';
 import '../../bloc/main_grid/main_grid_event.dart';
 import '../../data/repository/card_repository.dart';
+import '../../data/repository/space_repository.dart';
 import '../widgets/grid/main_grid_view.dart';
+import '../widgets/tabs/spaces_tab.dart';
 import '../widgets/card/add_text_card_modal.dart';
 import '../widgets/card/add_image_card_modal.dart';
 import '../widgets/card/add_link_card_modal.dart';
@@ -72,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor:
             AppTheme.scaffoldBackgroundColor, // Material 3 dark theme
         appBar: _buildAppBar(),
-        body: const MainGridView(),
+        body: _buildBody(),
         bottomNavigationBar: _buildBottomNavBar(),
         floatingActionButton: AnimatedScale(
           scale: _searchController.text.isEmpty ? 1.0 : 0.0,
@@ -104,30 +106,36 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildBody() {
+    // Switch between different tabs based on _selectedIndex
+    switch (_selectedIndex) {
+      case 0: // Everything (Main Grid)
+        return const MainGridView();
+      case 1: // Spaces
+        return const SpacesTab();
+      case 2: // Serendipity
+        return const Center(
+          child: Text(
+            'Serendipity feature coming soon!',
+            style: TextStyle(color: Colors.white70),
+          ),
+        );
+      default:
+        return const MainGridView();
+    }
+  }
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: AppTheme.surfaceVariantColor,
       elevation: 0,
+      automaticallyImplyLeading:
+          false, // This prevents the back button from appearing
       title: const Text(
         'Retainly',
         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: Colors.white70),
-          onPressed: () {
-            // Show notification placeholder
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Notifications coming soon!'),
-                duration: Duration(seconds: 1),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          },
-        ),
-        const SizedBox(width: 8),
-      ],
+      actions: [],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(65),
         child: Padding(

@@ -13,7 +13,11 @@ class LandingScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              const Icon(Icons.lock_outline, size: 80),
+              const Image(
+                image: AssetImage('assets/images/brain_logo.png'),
+                width: 216,
+                height: 216,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Retainly',
@@ -24,7 +28,7 @@ class LandingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'A minimal, secure place to retain the things that matter.',
+                'An extension of your mind',
                 style: Theme.of(context).textTheme.bodyLarge,
                 textAlign: TextAlign.center,
               ),
@@ -32,8 +36,9 @@ class LandingScreen extends StatelessWidget {
               SizedBox(
                 height: 48,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pushNamed('/home'),
-                  child: const Text('Open Vault'),
+                  onPressed: () =>
+                      Navigator.of(context).pushReplacementNamed('/home'),
+                  child: const Text('Open Memories'),
                 ),
               ),
             ],

@@ -4,37 +4,94 @@ part of 'database.dart';
 class CardDao extends DatabaseAccessor<AppDatabase> with _$CardDaoMixin {
   CardDao(super.db);
 
+  // Insert a card using direct SQL to avoid dependency on generated code
   Future<int> insertCard(CardEntity card) async {
-    return into(cards).insert(card.toCompanion());
+    // Rather than using customStatement with an array of parameters,
+    // let's explicitly construct the SQL statement with proper value handling
+
+    print("CardDAO: Inserting new card of type: ${card.type}");
+    if (card.type == 'image') {
+      print("CardDAO: Image path: ${card.imagePath}");
+      if (card.imagePath != null) {
+        // Check if the image file exists
+        final file = File(card.imagePath!);
+        final exists = await file.exists();
+        print("CardDAO: Image file exists? $exists at ${file.absolute.path}");
+      }
+    }
+
+    // Helper function to handle SQL string values
+    String sqlString(String? value) =>
+        value == null ? 'NULL' : "'${value.replaceAll("'", "''")}'";
+
+    // Helper function to handle SQL int values
+    String sqlInt(int? value) => value?.toString() ?? 'NULL';
+
+    final query =
+        '''
+      INSERT INTO cards (
+        type, content, body, image_path, url, space_id, created_at, updated_at
+      ) VALUES (
+        '${card.type}', 
+        '${card.content.replaceAll("'", "''")}',
+        ${sqlString(card.body)},
+        ${sqlString(card.imagePath)},
+        ${sqlString(card.url)},
+        ${sqlInt(card.spaceId)},
+        ${card.createdAt},
+        ${card.updatedAt}
+      )
+    ''';
+
+    await customStatement(query, []);
+
+    // Get the last inserted ID
+    final result = await customSelect(
+      'SELECT last_insert_rowid() as id',
+    ).getSingle();
+
+    return result.data['id'] as int;
   }
 
   Future<List<CardEntity>> getAllCards({int offset = 0, int limit = 40}) async {
-    final query =
-        (select(cards)
-              ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
-              ..limit(limit, offset: offset))
-            .get();
-    final rows = await query;
-    return rows.map((e) => e.toEntity()).toList(growable: false);
+    final query = '''
+      SELECT * FROM cards 
+      ORDER BY created_at DESC 
+      LIMIT ? OFFSET ?
+    ''';
+
+    final rows = await customSelect(
+      query,
+      variables: [Variable<int>(limit), Variable<int>(offset)],
+    ).get();
+
+    return rows.map((row) => mapRowToCardEntity(row.data)).toList();
   }
 
   Future<List<CardEntity>> searchCards(String query) async {
     final like = '%${query.replaceAll('%', '\\%').replaceAll('_', '\\_')}%';
-    final rows =
-        await (select(cards)
-              ..where(
-                (t) =>
-                    t.content.like(like) |
-                    (t.body.isNotNull() & t.body.like(like)) |
-                    (t.url.isNotNull() & t.url.like(like)),
-              )
-              ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
-              ..limit(100))
-            .get();
-    return rows.map((e) => e.toEntity()).toList(growable: false);
+    final sqlQuery = '''
+      SELECT * FROM cards 
+      WHERE content LIKE ? 
+         OR (body IS NOT NULL AND body LIKE ?) 
+         OR (url IS NOT NULL AND url LIKE ?)
+      ORDER BY created_at DESC 
+      LIMIT 100
+    ''';
+
+    final rows = await customSelect(
+      sqlQuery,
+      variables: [
+        Variable<String>(like),
+        Variable<String>(like),
+        Variable<String>(like),
+      ],
+    ).get();
+
+    return rows.map((row) => mapRowToCardEntity(row.data)).toList();
   }
 
   Future<void> deleteCard(int id) async {
-    await (delete(cards)..where((t) => t.id.equals(id))).go();
+    await customStatement('DELETE FROM cards WHERE id = ?', [id]);
   }
 }

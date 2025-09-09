@@ -6,6 +6,7 @@ import '../../../bloc/add_card/add_card_bloc.dart';
 import '../../../bloc/add_card/add_card_event.dart';
 import '../../../bloc/add_card/add_card_state.dart';
 import '../../../data/repository/card_repository.dart';
+import '../../../utils/url_utils.dart';
 
 class AddLinkCardModal extends StatefulWidget {
   final String? initialUrl;
@@ -32,6 +33,7 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
   bool _isFetching = false;
   String? _fetchError;
   Timer? _debounceTimer;
+  bool _userInitiatedSave = false;
 
   @override
   void initState() {
@@ -67,6 +69,18 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
 
       // Only fetch if URL is valid
       if (isValid) {
+        // Update with normalized URL for better UX
+        final normalizedUrl = UrlUtils.normalizeUrl(url);
+        if (normalizedUrl != url) {
+          // Update text field with properly formatted URL (don't trigger listener)
+          _urlController.removeListener(_onUrlChanged);
+          _urlController.text = normalizedUrl;
+          _urlController.selection = TextSelection.fromPosition(
+            TextPosition(offset: normalizedUrl.length),
+          );
+          _urlController.addListener(_onUrlChanged);
+        }
+
         // Debounce the fetch operation
         _debounceTimer?.cancel();
         _debounceTimer = Timer(const Duration(milliseconds: 500), () {
@@ -79,18 +93,35 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
   bool _isValidUrl(String url) {
     if (url.isEmpty) return false;
 
-    // Simple URL validation using RegExp
-    final RegExp urlRegExp = RegExp(
-      r'^(https?:\/\/)?'
-      r'(www\.)?'
-      r'[-a-zA-Z0-9@:%._\+~#=]{1,256}'
-      r'\.[a-zA-Z0-9()]{1,6}'
-      r'([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
-      caseSensitive: false,
-      multiLine: false,
-    );
+    // More permissive URL validation
+    try {
+      // First, try to normalize the URL
+      String normalizedUrl = url.trim();
+      if (!normalizedUrl.startsWith('http://') &&
+          !normalizedUrl.startsWith('https://') &&
+          !normalizedUrl.startsWith('www.')) {
+        // Check if it has a valid TLD format with a dot
+        if (!normalizedUrl.contains('.')) {
+          return false;
+        }
+      }
 
-    return urlRegExp.hasMatch(url);
+      // Additional validation using RegExp (more permissive)
+      final RegExp urlRegExp = RegExp(
+        r'^(https?:\/\/)?'
+        r'(www\.)?'
+        r'[-a-zA-Z0-9@:%._\+~#=]{1,256}'
+        r'\.[a-zA-Z0-9()]{1,6}'
+        r'([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+        caseSensitive: false,
+        multiLine: false,
+      );
+
+      return urlRegExp.hasMatch(url);
+    } catch (e) {
+      print('URL validation error: $e');
+      return false;
+    }
   }
 
   Future<void> _fetchTitle() async {
@@ -102,25 +133,41 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
     });
 
     try {
+      // Use the UrlUtils class for normalized URL
       final url = _urlController.text.trim();
-      // URL normalization - ensure it starts with http:// or https://
-      String normalizedUrl = url;
-      if (!normalizedUrl.startsWith('http://') &&
-          !normalizedUrl.startsWith('https://')) {
-        normalizedUrl = 'https://$normalizedUrl';
+      final normalizedUrl = UrlUtils.normalizeUrl(url);
+
+      // Update the URL field with normalized URL if changed
+      if (normalizedUrl != url) {
+        _urlController.removeListener(_onUrlChanged);
+        _urlController.text = normalizedUrl;
+        _urlController.selection = TextSelection.fromPosition(
+          TextPosition(offset: normalizedUrl.length),
+        );
+        _urlController.addListener(_onUrlChanged);
       }
 
-      // Update the URL field with normalized URL
-      if (normalizedUrl != url) {
-        _urlController.text = normalizedUrl;
-      }
+      print('Fetching title for URL: $normalizedUrl');
 
       // Add event to fetch title
       _addCardBloc.add(FetchTitleRequested(url: normalizedUrl));
     } catch (e) {
+      print('Error in _fetchTitle: $e');
       setState(() {
         _fetchError = 'Failed to fetch title: ${e.toString()}';
         _isFetching = false;
+
+        // If we couldn't fetch title but have a valid URL, use domain as fallback
+        if (_titleController.text.isEmpty) {
+          try {
+            final url = Uri.parse(
+              UrlUtils.normalizeUrl(_urlController.text.trim()),
+            );
+            _titleController.text = url.host;
+          } catch (_) {
+            // If parsing fails, leave title as is
+          }
+        }
       });
     }
   }
@@ -136,16 +183,22 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
             setState(() {
               _isFetching = false;
             });
-          } else if (state is AddCardFailure) {
+          } else if (state is AddCardError) {
             setState(() {
-              _fetchError = state.error;
+              _fetchError = state.message;
               _isFetching = false;
             });
           } else if (state is AddCardSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Link saved successfully')),
+              const SnackBar(
+                content: Text('Link saved successfully'),
+                behavior: SnackBarBehavior.floating,
+              ),
             );
-            Navigator.of(context).pop(true);
+            // Only pop if the user initiated saving via the save button
+            if (_userInitiatedSave) {
+              Navigator.of(context).pop(true);
+            }
           }
         },
         builder: (context, state) {
@@ -288,12 +341,15 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
                           onPressed:
                               (_isUrlValid &&
                                   !_isFetching &&
-                                  state is! AddCardSaving)
+                                  state is! AddCardLoading)
                               ? () {
                                   if (_formKey.currentState?.validate() ??
                                       false) {
                                     final url = _urlController.text.trim();
                                     final title = _titleController.text.trim();
+
+                                    // Set flag that user initiated this save action
+                                    _userInitiatedSave = true;
 
                                     _addCardBloc.add(
                                       AddLinkCardRequested(
@@ -308,7 +364,7 @@ class _AddLinkCardModalState extends State<AddLinkCardModal> {
                             backgroundColor: Colors.orangeAccent,
                             foregroundColor: Colors.white,
                           ),
-                          child: state is AddCardSaving
+                          child: state is AddCardLoading
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,

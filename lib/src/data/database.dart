@@ -4,9 +4,18 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'card_entity.dart';
+import 'space_entity.dart';
 
 part 'database.g.dart';
 part 'card_dao.dart';
+part 'space_dao.dart';
+
+// Drift table definition for spaces
+class Spaces extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  IntColumn get createdAt => integer()();
+}
 
 // Drift table definition for cards
 class Cards extends Table {
@@ -16,11 +25,12 @@ class Cards extends Table {
   TextColumn get body => text().nullable()();
   TextColumn get imagePath => text().nullable()();
   TextColumn get url => text().nullable()();
+  IntColumn get spaceId => integer().nullable().references(Spaces, #id)();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
 }
 
-@DriftDatabase(tables: [Cards], daos: [CardDao])
+@DriftDatabase(tables: [Cards, Spaces], daos: [CardDao, SpaceDao])
 class AppDatabase extends _$AppDatabase {
   AppDatabase._internal(QueryExecutor e) : super(e);
 
@@ -30,7 +40,30 @@ class AppDatabase extends _$AppDatabase {
       _instance ??= AppDatabase._internal(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        // In version 2, we're adding spaces functionality
+        // First create the spaces table
+        await customStatement('''
+          CREATE TABLE spaces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+          )
+        ''');
+
+        // Then add the space_id column to cards table
+        await customStatement(
+          'ALTER TABLE cards ADD COLUMN space_id INTEGER REFERENCES spaces(id)',
+        );
+      }
+    },
+  );
 }
 
 LazyDatabase _openConnection() {
@@ -56,6 +89,13 @@ LazyDatabase _openConnection() {
   });
 }
 
+/* 
+ * Mapping helpers between Drift rows and Entities
+ * NOTE: Temporarily commented out until code generation is run
+ * These mappings will be uncommented once the Drift classes are generated
+ */
+
+/*
 // Mapping helpers between Drift row and CardEntity
 extension CardMapper on Card {
   CardEntity toEntity() => CardEntity(
@@ -65,6 +105,7 @@ extension CardMapper on Card {
     body: body,
     imagePath: imagePath,
     url: url,
+    spaceId: spaceId,
     createdAt: createdAt,
     updatedAt: updatedAt,
   );
@@ -77,7 +118,49 @@ extension CardCompanionMapper on CardEntity {
     body: Value(body),
     imagePath: Value(imagePath),
     url: Value(url),
+    spaceId: Value(spaceId),
     createdAt: createdAt,
     updatedAt: updatedAt,
+  );
+}
+
+// Mapping helpers for Spaces
+extension SpaceMapper on Space {
+  SpaceEntity toEntity({int? cardCount}) => SpaceEntity(
+    id: id,
+    name: name,
+    createdAt: createdAt,
+    cardCount: cardCount,
+  );
+}
+
+extension SpaceCompanionMapper on SpaceEntity {
+  SpacesCompanion toCompanion() =>
+      SpacesCompanion.insert(name: name, createdAt: createdAt);
+}
+*/
+
+// Manual mapping functions to use until code generation is complete
+// These will be replaced by the extensions above after running the generator
+CardEntity mapRowToCardEntity(Map<String, dynamic> row) {
+  return CardEntity(
+    id: row['id'] as int?,
+    type: row['type'] as String,
+    content: row['content'] as String,
+    body: row['body'] as String?,
+    imagePath: row['image_path'] as String?,
+    url: row['url'] as String?,
+    spaceId: row['space_id'] as int?,
+    createdAt: row['created_at'] as int,
+    updatedAt: row['updated_at'] as int,
+  );
+}
+
+SpaceEntity mapRowToSpaceEntity(Map<String, dynamic> row, {int? cardCount}) {
+  return SpaceEntity(
+    id: row['id'] as int?,
+    name: row['name'] as String,
+    createdAt: row['created_at'] as int,
+    cardCount: cardCount,
   );
 }
