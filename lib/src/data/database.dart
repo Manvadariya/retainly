@@ -25,6 +25,8 @@ class Cards extends Table {
   TextColumn get body => text().nullable()();
   TextColumn get imagePath => text().nullable()();
   TextColumn get url => text().nullable()();
+  TextColumn get transcript =>
+      text().nullable()(); // Added for YouTube transcripts
   IntColumn get spaceId => integer().nullable().references(Spaces, #id)();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
@@ -40,7 +42,7 @@ class AppDatabase extends _$AppDatabase {
       _instance ??= AppDatabase._internal(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -61,6 +63,11 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           'ALTER TABLE cards ADD COLUMN space_id INTEGER REFERENCES spaces(id)',
         );
+      }
+
+      if (from == 2) {
+        // In version 3, we're adding YouTube transcript support
+        await customStatement('ALTER TABLE cards ADD COLUMN transcript TEXT');
       }
     },
   );

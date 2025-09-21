@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../data/card_entity.dart';
+import '../../../services/youtube_service.dart';
 import '../../../ui/screens/card_detail_screen.dart';
 import '../../../ui/theme/app_theme.dart';
 
@@ -265,6 +266,19 @@ class _StatelessCardWrapper extends StatelessWidget {
 
     // For links with preview image
     if (card.type == 'link' && card.url != null) {
+      // YouTube link with thumbnail
+      final youtubeService = YouTubeService(
+        apiKey: 'AIzaSyCZxtiHP3c0XzKvxn-mW9lKYMK-OugRymI',
+      );
+      if (youtubeService.isYoutubeUrl(card.url!)) {
+        // YouTube link indicator
+        if (card.imagePath != null) {
+          // Just display the thumbnail without the play button overlay
+          return _buildImageWidget(card.imagePath!);
+        }
+      }
+
+      // Regular link with image
       if (card.imagePath != null) {
         return _buildImageWidget(card.imagePath!);
       }

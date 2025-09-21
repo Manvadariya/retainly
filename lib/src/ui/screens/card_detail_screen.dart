@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../data/card_entity.dart';
 import '../../data/repository/card_repository.dart';
@@ -55,22 +56,7 @@ class _CardDetailScreenState extends State<CardDetailScreen>
     super.dispose();
   }
 
-  void _initVideoPlayer(String path) {
-    if (_videoController != null) {
-      _videoController!.dispose();
-    }
-
-    if (path.startsWith('http')) {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(path));
-    } else {
-      _videoController = VideoPlayerController.file(File(path));
-    }
-
-    _videoController!.initialize().then((_) {
-      if (mounted) setState(() {});
-      _videoController!.play();
-    });
-  }
+  // Video player initialization was moved to a different location
 
   void _showDeleteConfirmation(CardEntity card) {
     showDialog(
@@ -333,6 +319,46 @@ class _CardDetailScreenState extends State<CardDetailScreen>
                           ),
                         ),
                       ),
+
+                      const SizedBox(height: 16),
+
+                      // YouTube transcript section (if available)
+                      if (card.transcript != null &&
+                          card.transcript!.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+
+                        const Divider(color: Color(0xFF303030)),
+
+                        const Text(
+                          'Video Transcript',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 300),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF212121),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.all(12),
+                          child: SingleChildScrollView(
+                            child: SelectableText(
+                              card.transcript!,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                height: 1.5,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
 
                       const SizedBox(height: 16),
 

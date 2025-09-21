@@ -3,6 +3,249 @@
 part of 'database.dart';
 
 // ignore_for_file: type=lint
+class $SpacesTable extends Spaces with TableInfo<$SpacesTable, Space> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SpacesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'spaces';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Space> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Space map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Space(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SpacesTable createAlias(String alias) {
+    return $SpacesTable(attachedDatabase, alias);
+  }
+}
+
+class Space extends DataClass implements Insertable<Space> {
+  final int id;
+  final String name;
+  final int createdAt;
+  const Space({required this.id, required this.name, required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  SpacesCompanion toCompanion(bool nullToAbsent) {
+    return SpacesCompanion(
+      id: Value(id),
+      name: Value(name),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory Space.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Space(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  Space copyWith({int? id, String? name, int? createdAt}) => Space(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  Space copyWithCompanion(SpacesCompanion data) {
+    return Space(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Space(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Space &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.createdAt == this.createdAt);
+}
+
+class SpacesCompanion extends UpdateCompanion<Space> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> createdAt;
+  const SpacesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  SpacesCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required int createdAt,
+  }) : name = Value(name),
+       createdAt = Value(createdAt);
+  static Insertable<Space> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  SpacesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<int>? createdAt,
+  }) {
+    return SpacesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SpacesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $CardsTable extends Cards with TableInfo<$CardsTable, Card> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -70,6 +313,31 @@ class $CardsTable extends Cards with TableInfo<$CardsTable, Card> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _transcriptMeta = const VerificationMeta(
+    'transcript',
+  );
+  @override
+  late final GeneratedColumn<String> transcript = GeneratedColumn<String>(
+    'transcript',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _spaceIdMeta = const VerificationMeta(
+    'spaceId',
+  );
+  @override
+  late final GeneratedColumn<int> spaceId = GeneratedColumn<int>(
+    'space_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES spaces (id)',
+    ),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -100,6 +368,8 @@ class $CardsTable extends Cards with TableInfo<$CardsTable, Card> {
     body,
     imagePath,
     url,
+    transcript,
+    spaceId,
     createdAt,
     updatedAt,
   ];
@@ -152,6 +422,18 @@ class $CardsTable extends Cards with TableInfo<$CardsTable, Card> {
         url.isAcceptableOrUnknown(data['url']!, _urlMeta),
       );
     }
+    if (data.containsKey('transcript')) {
+      context.handle(
+        _transcriptMeta,
+        transcript.isAcceptableOrUnknown(data['transcript']!, _transcriptMeta),
+      );
+    }
+    if (data.containsKey('space_id')) {
+      context.handle(
+        _spaceIdMeta,
+        spaceId.isAcceptableOrUnknown(data['space_id']!, _spaceIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -201,6 +483,14 @@ class $CardsTable extends Cards with TableInfo<$CardsTable, Card> {
         DriftSqlType.string,
         data['${effectivePrefix}url'],
       ),
+      transcript: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transcript'],
+      ),
+      spaceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}space_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -225,6 +515,8 @@ class Card extends DataClass implements Insertable<Card> {
   final String? body;
   final String? imagePath;
   final String? url;
+  final String? transcript;
+  final int? spaceId;
   final int createdAt;
   final int updatedAt;
   const Card({
@@ -234,6 +526,8 @@ class Card extends DataClass implements Insertable<Card> {
     this.body,
     this.imagePath,
     this.url,
+    this.transcript,
+    this.spaceId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -252,6 +546,12 @@ class Card extends DataClass implements Insertable<Card> {
     if (!nullToAbsent || url != null) {
       map['url'] = Variable<String>(url);
     }
+    if (!nullToAbsent || transcript != null) {
+      map['transcript'] = Variable<String>(transcript);
+    }
+    if (!nullToAbsent || spaceId != null) {
+      map['space_id'] = Variable<int>(spaceId);
+    }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     return map;
@@ -267,6 +567,12 @@ class Card extends DataClass implements Insertable<Card> {
           ? const Value.absent()
           : Value(imagePath),
       url: url == null && nullToAbsent ? const Value.absent() : Value(url),
+      transcript: transcript == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transcript),
+      spaceId: spaceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(spaceId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -284,6 +590,8 @@ class Card extends DataClass implements Insertable<Card> {
       body: serializer.fromJson<String?>(json['body']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
       url: serializer.fromJson<String?>(json['url']),
+      transcript: serializer.fromJson<String?>(json['transcript']),
+      spaceId: serializer.fromJson<int?>(json['spaceId']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
     );
@@ -298,6 +606,8 @@ class Card extends DataClass implements Insertable<Card> {
       'body': serializer.toJson<String?>(body),
       'imagePath': serializer.toJson<String?>(imagePath),
       'url': serializer.toJson<String?>(url),
+      'transcript': serializer.toJson<String?>(transcript),
+      'spaceId': serializer.toJson<int?>(spaceId),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
     };
@@ -310,6 +620,8 @@ class Card extends DataClass implements Insertable<Card> {
     Value<String?> body = const Value.absent(),
     Value<String?> imagePath = const Value.absent(),
     Value<String?> url = const Value.absent(),
+    Value<String?> transcript = const Value.absent(),
+    Value<int?> spaceId = const Value.absent(),
     int? createdAt,
     int? updatedAt,
   }) => Card(
@@ -319,6 +631,8 @@ class Card extends DataClass implements Insertable<Card> {
     body: body.present ? body.value : this.body,
     imagePath: imagePath.present ? imagePath.value : this.imagePath,
     url: url.present ? url.value : this.url,
+    transcript: transcript.present ? transcript.value : this.transcript,
+    spaceId: spaceId.present ? spaceId.value : this.spaceId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -330,6 +644,10 @@ class Card extends DataClass implements Insertable<Card> {
       body: data.body.present ? data.body.value : this.body,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
       url: data.url.present ? data.url.value : this.url,
+      transcript: data.transcript.present
+          ? data.transcript.value
+          : this.transcript,
+      spaceId: data.spaceId.present ? data.spaceId.value : this.spaceId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -344,6 +662,8 @@ class Card extends DataClass implements Insertable<Card> {
           ..write('body: $body, ')
           ..write('imagePath: $imagePath, ')
           ..write('url: $url, ')
+          ..write('transcript: $transcript, ')
+          ..write('spaceId: $spaceId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -358,6 +678,8 @@ class Card extends DataClass implements Insertable<Card> {
     body,
     imagePath,
     url,
+    transcript,
+    spaceId,
     createdAt,
     updatedAt,
   );
@@ -371,6 +693,8 @@ class Card extends DataClass implements Insertable<Card> {
           other.body == this.body &&
           other.imagePath == this.imagePath &&
           other.url == this.url &&
+          other.transcript == this.transcript &&
+          other.spaceId == this.spaceId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -382,6 +706,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
   final Value<String?> body;
   final Value<String?> imagePath;
   final Value<String?> url;
+  final Value<String?> transcript;
+  final Value<int?> spaceId;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   const CardsCompanion({
@@ -391,6 +717,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
     this.body = const Value.absent(),
     this.imagePath = const Value.absent(),
     this.url = const Value.absent(),
+    this.transcript = const Value.absent(),
+    this.spaceId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -401,6 +729,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
     this.body = const Value.absent(),
     this.imagePath = const Value.absent(),
     this.url = const Value.absent(),
+    this.transcript = const Value.absent(),
+    this.spaceId = const Value.absent(),
     required int createdAt,
     required int updatedAt,
   }) : type = Value(type),
@@ -414,6 +744,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
     Expression<String>? body,
     Expression<String>? imagePath,
     Expression<String>? url,
+    Expression<String>? transcript,
+    Expression<int>? spaceId,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
   }) {
@@ -424,6 +756,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
       if (body != null) 'body': body,
       if (imagePath != null) 'image_path': imagePath,
       if (url != null) 'url': url,
+      if (transcript != null) 'transcript': transcript,
+      if (spaceId != null) 'space_id': spaceId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -436,6 +770,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
     Value<String?>? body,
     Value<String?>? imagePath,
     Value<String?>? url,
+    Value<String?>? transcript,
+    Value<int?>? spaceId,
     Value<int>? createdAt,
     Value<int>? updatedAt,
   }) {
@@ -446,6 +782,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
       body: body ?? this.body,
       imagePath: imagePath ?? this.imagePath,
       url: url ?? this.url,
+      transcript: transcript ?? this.transcript,
+      spaceId: spaceId ?? this.spaceId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -472,6 +810,12 @@ class CardsCompanion extends UpdateCompanion<Card> {
     if (url.present) {
       map['url'] = Variable<String>(url.value);
     }
+    if (transcript.present) {
+      map['transcript'] = Variable<String>(transcript.value);
+    }
+    if (spaceId.present) {
+      map['space_id'] = Variable<int>(spaceId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -490,6 +834,8 @@ class CardsCompanion extends UpdateCompanion<Card> {
           ..write('body: $body, ')
           ..write('imagePath: $imagePath, ')
           ..write('url: $url, ')
+          ..write('transcript: $transcript, ')
+          ..write('spaceId: $spaceId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -500,15 +846,262 @@ class CardsCompanion extends UpdateCompanion<Card> {
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $SpacesTable spaces = $SpacesTable(this);
   late final $CardsTable cards = $CardsTable(this);
   late final CardDao cardDao = CardDao(this as AppDatabase);
+  late final SpaceDao spaceDao = SpaceDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [cards];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [spaces, cards];
 }
 
+typedef $$SpacesTableCreateCompanionBuilder =
+    SpacesCompanion Function({
+      Value<int> id,
+      required String name,
+      required int createdAt,
+    });
+typedef $$SpacesTableUpdateCompanionBuilder =
+    SpacesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> createdAt,
+    });
+
+final class $$SpacesTableReferences
+    extends BaseReferences<_$AppDatabase, $SpacesTable, Space> {
+  $$SpacesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$CardsTable, List<Card>> _cardsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.cards,
+    aliasName: $_aliasNameGenerator(db.spaces.id, db.cards.spaceId),
+  );
+
+  $$CardsTableProcessedTableManager get cardsRefs {
+    final manager = $$CardsTableTableManager(
+      $_db,
+      $_db.cards,
+    ).filter((f) => f.spaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_cardsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$SpacesTableFilterComposer
+    extends Composer<_$AppDatabase, $SpacesTable> {
+  $$SpacesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> cardsRefs(
+    Expression<bool> Function($$CardsTableFilterComposer f) f,
+  ) {
+    final $$CardsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cards,
+      getReferencedColumn: (t) => t.spaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CardsTableFilterComposer(
+            $db: $db,
+            $table: $db.cards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$SpacesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SpacesTable> {
+  $$SpacesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SpacesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SpacesTable> {
+  $$SpacesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> cardsRefs<T extends Object>(
+    Expression<T> Function($$CardsTableAnnotationComposer a) f,
+  ) {
+    final $$CardsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cards,
+      getReferencedColumn: (t) => t.spaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CardsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$SpacesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SpacesTable,
+          Space,
+          $$SpacesTableFilterComposer,
+          $$SpacesTableOrderingComposer,
+          $$SpacesTableAnnotationComposer,
+          $$SpacesTableCreateCompanionBuilder,
+          $$SpacesTableUpdateCompanionBuilder,
+          (Space, $$SpacesTableReferences),
+          Space,
+          PrefetchHooks Function({bool cardsRefs})
+        > {
+  $$SpacesTableTableManager(_$AppDatabase db, $SpacesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SpacesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SpacesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SpacesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+              }) => SpacesCompanion(id: id, name: name, createdAt: createdAt),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required int createdAt,
+              }) => SpacesCompanion.insert(
+                id: id,
+                name: name,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) =>
+                    (e.readTable(table), $$SpacesTableReferences(db, table, e)),
+              )
+              .toList(),
+          prefetchHooksCallback: ({cardsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (cardsRefs) db.cards],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (cardsRefs)
+                    await $_getPrefetchedData<Space, $SpacesTable, Card>(
+                      currentTable: table,
+                      referencedTable: $$SpacesTableReferences._cardsRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult: (p0) =>
+                          $$SpacesTableReferences(db, table, p0).cardsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.spaceId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SpacesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SpacesTable,
+      Space,
+      $$SpacesTableFilterComposer,
+      $$SpacesTableOrderingComposer,
+      $$SpacesTableAnnotationComposer,
+      $$SpacesTableCreateCompanionBuilder,
+      $$SpacesTableUpdateCompanionBuilder,
+      (Space, $$SpacesTableReferences),
+      Space,
+      PrefetchHooks Function({bool cardsRefs})
+    >;
 typedef $$CardsTableCreateCompanionBuilder =
     CardsCompanion Function({
       Value<int> id,
@@ -517,6 +1110,8 @@ typedef $$CardsTableCreateCompanionBuilder =
       Value<String?> body,
       Value<String?> imagePath,
       Value<String?> url,
+      Value<String?> transcript,
+      Value<int?> spaceId,
       required int createdAt,
       required int updatedAt,
     });
@@ -528,9 +1123,34 @@ typedef $$CardsTableUpdateCompanionBuilder =
       Value<String?> body,
       Value<String?> imagePath,
       Value<String?> url,
+      Value<String?> transcript,
+      Value<int?> spaceId,
       Value<int> createdAt,
       Value<int> updatedAt,
     });
+
+final class $$CardsTableReferences
+    extends BaseReferences<_$AppDatabase, $CardsTable, Card> {
+  $$CardsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $SpacesTable _spaceIdTable(_$AppDatabase db) => db.spaces.createAlias(
+    $_aliasNameGenerator(db.cards.spaceId, db.spaces.id),
+  );
+
+  $$SpacesTableProcessedTableManager? get spaceId {
+    final $_column = $_itemColumn<int>('space_id');
+    if ($_column == null) return null;
+    final manager = $$SpacesTableTableManager(
+      $_db,
+      $_db.spaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_spaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
 
 class $$CardsTableFilterComposer extends Composer<_$AppDatabase, $CardsTable> {
   $$CardsTableFilterComposer({
@@ -570,6 +1190,11 @@ class $$CardsTableFilterComposer extends Composer<_$AppDatabase, $CardsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get transcript => $composableBuilder(
+    column: $table.transcript,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
@@ -579,6 +1204,29 @@ class $$CardsTableFilterComposer extends Composer<_$AppDatabase, $CardsTable> {
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$SpacesTableFilterComposer get spaceId {
+    final $$SpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.spaceId,
+      referencedTable: $db.spaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.spaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$CardsTableOrderingComposer
@@ -620,6 +1268,11 @@ class $$CardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get transcript => $composableBuilder(
+    column: $table.transcript,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -629,6 +1282,29 @@ class $$CardsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$SpacesTableOrderingComposer get spaceId {
+    final $$SpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.spaceId,
+      referencedTable: $db.spaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.spaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$CardsTableAnnotationComposer
@@ -658,11 +1334,39 @@ class $$CardsTableAnnotationComposer
   GeneratedColumn<String> get url =>
       $composableBuilder(column: $table.url, builder: (column) => column);
 
+  GeneratedColumn<String> get transcript => $composableBuilder(
+    column: $table.transcript,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
   GeneratedColumn<int> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$SpacesTableAnnotationComposer get spaceId {
+    final $$SpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.spaceId,
+      referencedTable: $db.spaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.spaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$CardsTableTableManager
@@ -676,9 +1380,9 @@ class $$CardsTableTableManager
           $$CardsTableAnnotationComposer,
           $$CardsTableCreateCompanionBuilder,
           $$CardsTableUpdateCompanionBuilder,
-          (Card, BaseReferences<_$AppDatabase, $CardsTable, Card>),
+          (Card, $$CardsTableReferences),
           Card,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool spaceId})
         > {
   $$CardsTableTableManager(_$AppDatabase db, $CardsTable table)
     : super(
@@ -699,6 +1403,8 @@ class $$CardsTableTableManager
                 Value<String?> body = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> url = const Value.absent(),
+                Value<String?> transcript = const Value.absent(),
+                Value<int?> spaceId = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
               }) => CardsCompanion(
@@ -708,6 +1414,8 @@ class $$CardsTableTableManager
                 body: body,
                 imagePath: imagePath,
                 url: url,
+                transcript: transcript,
+                spaceId: spaceId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -719,6 +1427,8 @@ class $$CardsTableTableManager
                 Value<String?> body = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> url = const Value.absent(),
+                Value<String?> transcript = const Value.absent(),
+                Value<int?> spaceId = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
               }) => CardsCompanion.insert(
@@ -728,13 +1438,58 @@ class $$CardsTableTableManager
                 body: body,
                 imagePath: imagePath,
                 url: url,
+                transcript: transcript,
+                spaceId: spaceId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) =>
+                    (e.readTable(table), $$CardsTableReferences(db, table, e)),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({spaceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (spaceId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.spaceId,
+                                referencedTable: $$CardsTableReferences
+                                    ._spaceIdTable(db),
+                                referencedColumn: $$CardsTableReferences
+                                    ._spaceIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -749,18 +1504,25 @@ typedef $$CardsTableProcessedTableManager =
       $$CardsTableAnnotationComposer,
       $$CardsTableCreateCompanionBuilder,
       $$CardsTableUpdateCompanionBuilder,
-      (Card, BaseReferences<_$AppDatabase, $CardsTable, Card>),
+      (Card, $$CardsTableReferences),
       Card,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool spaceId})
     >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
+  $$SpacesTableTableManager get spaces =>
+      $$SpacesTableTableManager(_db, _db.spaces);
   $$CardsTableTableManager get cards =>
       $$CardsTableTableManager(_db, _db.cards);
 }
 
 mixin _$CardDaoMixin on DatabaseAccessor<AppDatabase> {
+  $SpacesTable get spaces => attachedDatabase.spaces;
+  $CardsTable get cards => attachedDatabase.cards;
+}
+mixin _$SpaceDaoMixin on DatabaseAccessor<AppDatabase> {
+  $SpacesTable get spaces => attachedDatabase.spaces;
   $CardsTable get cards => attachedDatabase.cards;
 }

@@ -3,8 +3,11 @@ import 'dart:io';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as parser;
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import '../../data/card_entity.dart';
 import '../../data/repository/card_repository.dart';
+import '../../services/youtube_service.dart';
 import 'add_card_event.dart';
 import 'add_card_state.dart';
 import '../../utils/image_storage.dart';
@@ -106,21 +109,144 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     emit(const AddCardLoading());
 
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final card = CardEntity(
-        type: 'link',
-        content: event.title.trim(),
-        url: event.url.trim(),
-        spaceId: event.spaceId, // Add to space if specified
-        createdAt: now,
-        updatedAt: now,
+      final url = event.url.trim();
+      final youtubeService = YouTubeService(
+        apiKey: 'AIzaSyCZxtiHP3c0XzKvxn-mW9lKYMK-OugRymI',
       );
 
-      final cardId = await cardRepository.addCard(card);
-      emit(AddCardSuccess(cardId));
+      // Check if this is a YouTube URL
+      if (youtubeService.isYoutubeUrl(url)) {
+        print('AddCardBloc: Detected YouTube URL: $url');
+        await _handleYoutubeCard(event, emit, youtubeService);
+      } else {
+        // Handle regular link
+        await _handleRegularLinkCard(event, emit);
+      }
     } catch (e) {
+      print('AddCardBloc: Error in _onAddLinkCardRequested: $e');
       emit(AddCardError(e.toString()));
     }
+  }
+
+  /// Handle a regular link card (non-YouTube)
+  Future<void> _handleRegularLinkCard(
+    AddLinkCardRequested event,
+    Emitter<AddCardState> emit,
+  ) async {
+    final url = event.url.trim();
+
+    // Attempt to fetch webpage title if not provided
+    String title = event.title.trim();
+    if (title.isEmpty) {
+      try {
+        // Create a YouTubeService instance just for web page title fetching
+        final youtubeService = YouTubeService(
+          apiKey: 'AIzaSyCZxtiHP3c0XzKvxn-mW9lKYMK-OugRymI',
+        );
+        final fetchedTitle = await youtubeService.fetchWebPageTitle(url);
+        if (fetchedTitle != null && fetchedTitle.isNotEmpty) {
+          title = fetchedTitle;
+          print('AddCardBloc: Fetched web page title: $title');
+        } else {
+          title = url; // Use URL as fallback title
+        }
+      } catch (e) {
+        print('AddCardBloc: Error fetching web page title: $e');
+        title = url; // Use URL as fallback title
+      }
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final card = CardEntity(
+      type: 'link',
+      content: title, // Use fetched title or provided title
+      url: url,
+      spaceId: event.spaceId, // Add to space if specified
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final cardId = await cardRepository.addCard(card);
+    emit(AddCardSuccess(cardId));
+  }
+
+  /// Handle a YouTube link card with thumbnail and transcript
+  Future<void> _handleYoutubeCard(
+    AddLinkCardRequested event,
+    Emitter<AddCardState> emit,
+    YouTubeService youtubeService,
+  ) async {
+    final url = event.url.trim();
+    final videoId = youtubeService.extractVideoId(url);
+
+    if (videoId == null) {
+      print('AddCardBloc: Could not extract video ID from YouTube URL: $url');
+      // Fall back to regular link handling
+      await _handleRegularLinkCard(event, emit);
+      return;
+    }
+
+    print('AddCardBloc: Extracted YouTube video ID: $videoId');
+
+    // Attempt to fetch video title if not provided
+    String title = event.title.trim();
+    if (title.isEmpty) {
+      try {
+        final fetchedTitle = await youtubeService.fetchYouTubeTitle(videoId);
+        if (fetchedTitle != null && fetchedTitle.isNotEmpty) {
+          title = fetchedTitle;
+          print('AddCardBloc: Fetched YouTube title: $title');
+        } else {
+          title = 'YouTube Video';
+        }
+      } catch (e) {
+        print('AddCardBloc: Error fetching YouTube title: $e');
+        title = 'YouTube Video';
+      }
+    }
+
+    // Attempt to fetch thumbnail
+    String? thumbnailPath;
+    try {
+      thumbnailPath = await youtubeService.fetchThumbnail(videoId);
+      print('AddCardBloc: Fetched YouTube thumbnail: $thumbnailPath');
+    } catch (e) {
+      print('AddCardBloc: Error fetching YouTube thumbnail: $e');
+      // Continue without thumbnail
+    }
+
+    // Attempt to fetch transcript
+    String? transcript;
+    try {
+      transcript = await youtubeService.fetchTranscript(videoId);
+      if (transcript != null) {
+        print(
+          'AddCardBloc: Fetched YouTube transcript (${transcript.length} chars)',
+        );
+      } else {
+        print('AddCardBloc: No transcript available for video ID: $videoId');
+      }
+    } catch (e) {
+      print('AddCardBloc: Error fetching YouTube transcript: $e');
+      // Continue without transcript
+    }
+
+    // Create and save card with YouTube data
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final card = CardEntity(
+      type: 'link',
+      content: title, // Use fetched title or provided title
+      url: event.url.trim(),
+      imagePath: thumbnailPath, // Add thumbnail path if available
+      transcript: transcript, // Add transcript if available
+      spaceId: event.spaceId, // Add to space if specified
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final cardId = await cardRepository.addCard(card);
+    print('AddCardBloc: Saved YouTube card with ID: $cardId');
+    emit(AddCardSuccess(cardId));
   }
 
   Future<void> _onFetchTitleRequested(
