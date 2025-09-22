@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../../../utils/youtube_card_helper.dart';
+import '../../../ui/screens/youtube_details_screen.dart';
+
 import '../../../bloc/main_grid/main_grid_bloc.dart';
 import '../../../bloc/main_grid/main_grid_event.dart';
 import '../../../bloc/main_grid/main_grid_state.dart';
@@ -466,6 +469,30 @@ class _MainGridViewState extends State<MainGridView> {
     return CardTile(
       card: card,
       onTap: () {
+        // Check if it's a YouTube card
+        if (card.type == 'link' && card.url != null) {
+          if (YouTubeCardHelper.isYouTubeCard(card)) {
+            final metadata = YouTubeCardHelper.extractMetadata(card);
+            if (metadata != null) {
+              // Navigate to YouTube details page
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      YouTubeDetailsScreen(metadata: metadata),
+                ),
+              ).then((_) {
+                // Refresh the grid when returning
+                context.read<MainGridBloc>().add(
+                  const LoadCards(refresh: true),
+                );
+              });
+              return;
+            }
+          }
+        }
+
+        // Default navigation for non-YouTube cards
         if (card.id != null) {
           Navigator.pushNamed(context, '/cardDetail', arguments: card.id).then((
             result,

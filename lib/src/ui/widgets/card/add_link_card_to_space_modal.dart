@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../../services/youtube_service_exports.dart';
 
 import '../../../data/repository/card_repository.dart';
 import '../../../data/card_entity.dart';
@@ -109,7 +110,7 @@ class _AddLinkCardToSpaceModalState extends State<AddLinkCardToSpaceModal> {
 
   Future<void> _saveCard() async {
     if (!_formKey.currentState!.validate() || _isLoading) return;
-    
+
     setState(() {
       _isLoading = true;
     });
@@ -117,19 +118,41 @@ class _AddLinkCardToSpaceModalState extends State<AddLinkCardToSpaceModal> {
     try {
       final cardRepository = context.read<CardRepository>();
       final now = DateTime.now().millisecondsSinceEpoch;
-      
+      final url = _urlController.text.trim();
+
+      // Attempt to fetch YouTube metadata if the URL is a YouTube link
+      Map<String, dynamic>? metadata;
+      String? imageUrl;
+      try {
+        final svc = YouTubeService();
+        if (svc.isYoutubeUrl(url)) {
+          final ytMeta = await svc.fetchMetadata(url);
+          if (ytMeta != null) {
+            metadata = ytMeta.toJson();
+            imageUrl = ytMeta.thumbnailLow;
+            if (_titleController.text.trim().isEmpty) {
+              _titleController.text = ytMeta.title;
+            }
+          }
+        }
+      } catch (e) {
+        // Best-effort; continue without metadata if API fails
+      }
+
       final card = CardEntity(
         type: 'link',
         content: _titleController.text.trim(),
         body: _descriptionController.text.trim(),
-        url: _urlController.text.trim(),
+        url: url,
+        imagePath: imageUrl,
+        metadata: metadata,
         spaceId: widget.spaceId,
         createdAt: now,
         updatedAt: now,
       );
 
       await cardRepository.addCard(card);
-      
+
       if (mounted) {
         Navigator.of(context).pop(true);
       }

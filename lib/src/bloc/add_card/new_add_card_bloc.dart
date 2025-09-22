@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as parser;
 import '../../data/card_entity.dart';
 import '../../data/repository/card_repository.dart';
-import '../../services/youtube_service_exports.dart';
+import '../../services/new_youtube_service.dart'; // Using the new service
 import 'add_card_event.dart';
 import 'add_card_state.dart';
 import '../../utils/image_storage.dart';
@@ -13,8 +13,11 @@ import '../../utils/url_utils.dart';
 
 class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
   final CardRepository cardRepository;
+  final YouTubeService youtubeService;
 
-  AddCardBloc({required this.cardRepository}) : super(const AddCardIdle()) {
+  AddCardBloc({required this.cardRepository, YouTubeService? youtubeService})
+    : youtubeService = youtubeService ?? YouTubeService(),
+      super(const AddCardIdle()) {
     on<AddTextCardRequested>(_onAddTextCardRequested);
     on<AddImageCardRequested>(_onAddImageCardRequested);
     on<AddLinkCardRequested>(_onAddLinkCardRequested);
@@ -109,12 +112,11 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
 
     try {
       final url = event.url.trim();
-      final youtubeService = YouTubeService();
 
       // Check if this is a YouTube URL
       if (youtubeService.isYoutubeUrl(url)) {
         print('AddCardBloc: Detected YouTube URL: $url');
-        await _handleYoutubeCard(event, emit, youtubeService);
+        await _handleYoutubeCard(event, emit);
       } else {
         // Handle regular link
         await _handleRegularLinkCard(event, emit);
@@ -135,8 +137,46 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     // Attempt to fetch webpage title if not provided
     String title = event.title.trim();
     if (title.isEmpty) {
-      final fetchedTitle = await _fetchTitleFromWeb(url);
-      title = fetchedTitle ?? url; // fallback to URL if null
+      try {
+        final response = await http
+            .get(
+              Uri.parse(url),
+              headers: const {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              },
+            )
+            .timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          final document = parser.parse(response.body);
+
+          // Try title tag first
+          var titleElements = document.getElementsByTagName('title');
+          if (titleElements.isNotEmpty && titleElements.first.text.isNotEmpty) {
+            title = titleElements.first.text;
+            print('AddCardBloc: Fetched web page title: $title');
+          } else {
+            // Try meta tags next
+            var metaTags = document.getElementsByTagName('meta');
+            for (var tag in metaTags) {
+              if ((tag.attributes['property'] == 'og:title' ||
+                      tag.attributes['name'] == 'title') &&
+                  tag.attributes['content']?.isNotEmpty == true) {
+                title = tag.attributes['content']!;
+                break;
+              }
+            }
+          }
+        }
+
+        if (title.isEmpty) {
+          title = Uri.parse(url).host.replaceAll('www.', '');
+        }
+      } catch (e) {
+        print('AddCardBloc: Error fetching web page title: $e');
+        title = url; // Use URL as fallback title
+      }
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -153,101 +193,88 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     emit(AddCardSuccess(cardId));
   }
 
-  // Lightweight HTML title fetcher for regular links
-  Future<String?> _fetchTitleFromWeb(String rawUrl) async {
-    try {
-      final normalizedUrl = UrlUtils.normalizeUrl(rawUrl);
-      final uri = Uri.tryParse(normalizedUrl);
-      if (uri == null) return null;
-
-      final client = http.Client();
-      http.Response response;
-      try {
-        response = await client
-            .get(
-              uri,
-              headers: const {
-                'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept':
-                    'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              },
-            )
-            .timeout(const Duration(seconds: 5));
-      } finally {
-        client.close();
-      }
-
-      if (response.statusCode != 200 || response.body.isEmpty) return null;
-
-      final document = parser.parse(response.body);
-      final titles = document.getElementsByTagName('title');
-      if (titles.isNotEmpty) {
-        final t = titles.first.text.trim();
-        if (t.isNotEmpty) return t;
-      }
-
-      final metas = document.getElementsByTagName('meta');
-      final og = metas.firstWhere(
-        (e) => e.attributes['property'] == 'og:title',
-        orElse: () => metas.firstWhere(
-          (e) => e.attributes['name'] == 'title',
-          orElse: () => document.createElement('meta'),
-        ),
-      );
-      final ogContent = og.attributes['content'];
-      if (ogContent != null && ogContent.isNotEmpty) return ogContent;
-    } catch (e) {
-      // swallow and return null
-    }
-    return null;
-  }
-
-  /// Handle a YouTube link card with thumbnail and transcript
+  /// Handle a YouTube link card with metadata
   Future<void> _handleYoutubeCard(
     AddLinkCardRequested event,
     Emitter<AddCardState> emit,
-    YouTubeService youtubeService,
   ) async {
     final url = event.url.trim();
-    final videoId = youtubeService.extractVideoId(url);
 
-    if (videoId == null) {
-      print('AddCardBloc: Could not extract video ID from YouTube URL: $url');
+    // First, emit a state indicating we're fetching YouTube metadata
+    emit(const YouTubeMetadataLoading());
+
+    // Fetch complete metadata
+    final metadata = await youtubeService.fetchMetadata(url);
+
+    if (metadata == null) {
+      print('AddCardBloc: Failed to fetch YouTube metadata');
       // Fall back to regular link handling
       await _handleRegularLinkCard(event, emit);
       return;
     }
 
-    print('AddCardBloc: Extracted YouTube video ID: $videoId');
+    print(
+      'AddCardBloc: Successfully fetched YouTube metadata: ${metadata.title}',
+    );
 
-    // Fetch full metadata via YouTube Data API
-    String title = event.title.trim();
-    Map<String, dynamic>? metadata;
-    String? imageUrl;
+    // Fetch and save the thumbnails locally (both low and high quality for different UI contexts)
+    String? localThumbnailLowPath;
+    String? localThumbnailMediumPath;
+
     try {
-      final apiMeta = await youtubeService.fetchMetadata(url);
-      if (apiMeta != null) {
-        metadata = apiMeta.toJson();
-        if (title.isEmpty) title = apiMeta.title;
-        // Use low-res thumbnail for grid tile right away
-        imageUrl = apiMeta.thumbnailLow;
-      }
+      // Fetch low-quality thumbnail for list views (faster loading)
+      localThumbnailLowPath = await youtubeService.fetchThumbnail(
+        metadata.videoId,
+        quality: 'low',
+      );
+      print(
+        'AddCardBloc: Saved low-quality thumbnail to: $localThumbnailLowPath',
+      );
+
+      // Fetch medium-quality thumbnail for detail views (better quality)
+      localThumbnailMediumPath = await youtubeService.fetchThumbnail(
+        metadata.videoId,
+        quality: 'medium',
+      );
+      print(
+        'AddCardBloc: Saved medium-quality thumbnail to: $localThumbnailMediumPath',
+      );
     } catch (e) {
-      print('AddCardBloc: Error fetching YouTube metadata: $e');
+      print('AddCardBloc: Error saving thumbnails: $e');
+      // Continue without local thumbnails
     }
 
-    // Fallback title
-    if (title.isEmpty) title = 'YouTube Video';
+    // Transcript fetching removed for performance reasons
 
-    // Create and save card with YouTube data (thumbnail/transcript optional)
+    // Create card with all the metadata
     final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Use user-provided title if available, otherwise use metadata title
+    final cardTitle = event.title.trim().isNotEmpty
+        ? event.title.trim()
+        : metadata.title;
+
     final card = CardEntity(
       type: 'link',
-      content: title, // Use YouTube title or provided title
-      url: event.url.trim(),
-      imagePath: imageUrl,
-      metadata: metadata, // Store full metadata for details screen
+      content: cardTitle,
+      url: url,
+      imagePath:
+          localThumbnailMediumPath, // Use medium quality for main image path
+      transcript: null, // No transcript for performance
+      // Store essential metadata in the field for card display
+      metadata: {
+        'videoId': metadata.videoId,
+        'description': metadata.description,
+        'publishDate': metadata.publishDate,
+        'tags': metadata.tags.join(','),
+        'thumbnailLowPath':
+            localThumbnailLowPath, // Store low-quality thumbnail path for grid view
+        'thumbnailMediumPath':
+            localThumbnailMediumPath, // Store medium-quality thumbnail path for details
+        'thumbnailLowUrl':
+            metadata.thumbnailLow, // Store remote URLs for cache fallback
+        'thumbnailMediumUrl': metadata.thumbnailMedium,
+      },
       spaceId: event.spaceId, // Add to space if specified
       createdAt: now,
       updatedAt: now,
@@ -280,6 +307,28 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
       if (uri == null) {
         emit(const AddCardError('Invalid URL'));
         return;
+      }
+
+      // Check if this is a YouTube URL
+      if (youtubeService.isYoutubeUrl(normalizedUrl)) {
+        // Special handling for YouTube URLs
+        final videoId = youtubeService.extractVideoId(normalizedUrl);
+        if (videoId != null) {
+          // Show YouTube metadata loading state
+          emit(const YouTubeMetadataLoading());
+
+          try {
+            // Fetch YouTube metadata to get accurate title
+            final metadata = await youtubeService.fetchMetadata(normalizedUrl);
+            if (metadata != null) {
+              emit(TitleFetched(metadata.title));
+              return;
+            }
+          } catch (e) {
+            print('Error fetching YouTube metadata: $e');
+            // Continue with normal title fetching
+          }
+        }
       }
 
       // Create a fallback title immediately (we'll use this if fetching fails)

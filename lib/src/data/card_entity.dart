@@ -9,6 +9,8 @@ class CardEntity {
   final String? imagePath; // local file path (nullable)
   final String? url; // original URL if link (nullable)
   final String? transcript; // YouTube transcript if available (nullable)
+  final Map<String, dynamic>?
+  metadata; // Additional metadata (e.g., YouTube data)
   final int? spaceId; // ID of the space this card belongs to (nullable)
   final int createdAt; // epoch millis
   final int updatedAt; // epoch millis
@@ -21,6 +23,7 @@ class CardEntity {
     this.imagePath,
     this.url,
     this.transcript,
+    this.metadata,
     this.spaceId,
     required this.createdAt,
     required this.updatedAt,
@@ -28,7 +31,12 @@ class CardEntity {
 
   @override
   String toString() {
-    return 'CardEntity(id: $id, type: $type, content: $content, body: ${body?.substring(0, body!.length > 20 ? 20 : body!.length)}..., imagePath: $imagePath, url: $url, transcript: ${transcript != null ? 'available' : 'null'}, spaceId: $spaceId)';
+    String bodyPreview = '';
+    if (body != null) {
+      final previewLength = body!.length > 20 ? 20 : body!.length;
+      bodyPreview = body!.substring(0, previewLength) + '...';
+    }
+    return 'CardEntity(id: $id, type: $type, content: $content, body: $bodyPreview, imagePath: $imagePath, url: $url, transcript: ${transcript != null ? 'available' : 'null'}, metadata: ${metadata != null ? 'available' : 'null'}, spaceId: $spaceId)';
   }
 
   CardEntity copyWith({
@@ -39,6 +47,7 @@ class CardEntity {
     String? imagePath,
     String? url,
     String? transcript,
+    Map<String, dynamic>? metadata,
     int? spaceId,
     int? createdAt,
     int? updatedAt,
@@ -51,6 +60,7 @@ class CardEntity {
       imagePath: imagePath ?? this.imagePath,
       url: url ?? this.url,
       transcript: transcript ?? this.transcript,
+      metadata: metadata ?? this.metadata,
       spaceId: spaceId ?? this.spaceId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

@@ -26,3 +26,22 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## YouTube API Key
+
+This app integrates with the YouTube Data API v3. Provide your API key via a compile-time define:
+
+```
+flutter run --dart-define=YT_API_KEY=your_api_key_here
+```
+
+For release builds:
+
+```
+flutter build apk --dart-define=YT_API_KEY=your_api_key_here
+flutter build ios --dart-define=YT_API_KEY=your_api_key_here
+```
+
+Notes:
+- A sample `.env.example` is provided. Flutter does not automatically read `.env`; use `--dart-define` or configure CI to inject it.
+- `YouTubeService` reads the key using `const String.fromEnvironment('YT_API_KEY')`.

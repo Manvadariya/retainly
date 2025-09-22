@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../utils/youtube_card_helper.dart';
+import '../screens/youtube_details_screen.dart';
+
 import '../../blocs/spaces/space_cards_bloc.dart';
 import '../../data/card_entity.dart';
 import '../../data/repository/card_repository.dart';
@@ -126,7 +129,28 @@ class _SpaceScreenState extends State<SpaceScreen> {
         cards: cards,
         scrollController: _scrollController,
         onCardSelected: (card) {
-          // Navigate to card detail/edit screen
+          // Check if it's a YouTube card
+          if (card.type == 'link' && card.url != null) {
+            if (YouTubeCardHelper.isYouTubeCard(card)) {
+              final metadata = YouTubeCardHelper.extractMetadata(card);
+              if (metadata != null) {
+                // Navigate to YouTube details page
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        YouTubeDetailsScreen(metadata: metadata),
+                  ),
+                ).then((_) {
+                  // Refresh cards when returning from detail screen
+                  _spaceCardsBloc.add(LoadSpaceCards(widget.space.id!));
+                });
+                return;
+              }
+            }
+          }
+
+          // Default navigation for non-YouTube cards
           if (card.id != null) {
             Navigator.pushNamed(
               context,

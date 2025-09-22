@@ -5,6 +5,7 @@ import 'src/app.dart';
 import 'src/ui/widgets/card/add_text_card_modal.dart';
 import 'src/ui/widgets/card/add_image_card_modal.dart';
 import 'src/ui/widgets/card/add_link_card_modal.dart';
+import 'src/share_flow.dart';
 
 final GlobalKey<NavigatorState> globalNavigatorKey =
     GlobalKey<NavigatorState>();
@@ -21,10 +22,12 @@ void main() async {
     final handler = ShareHandlerPlatform.instance;
 
     // Initial share (cold start)
+    ShareFlow.pendingInitial.value = true;
     final initial = await handler.getInitialSharedMedia();
     if (initial != null) {
       _handleSharedMedia(initial);
     }
+    ShareFlow.pendingInitial.value = false;
 
     // Stream (warm start)
     handler.sharedMediaStream.listen((SharedMedia media) {
@@ -43,7 +46,8 @@ void _handleSharedMedia(SharedMedia media) async {
   print('Share handler: Received shared media');
 
   // Ensure we're on a stable context before showing any UI
-  await Future.delayed(const Duration(milliseconds: 500));
+  // Mark share flow active to prevent other auto-navigation (e.g., Splash)
+  ShareFlow.active.value = true;
 
   // Handle text content (plain text or URL)
   if (media.content != null && media.content!.isNotEmpty) {
@@ -72,6 +76,8 @@ void _handleSharedMedia(SharedMedia media) async {
             )
             .then((value) {
               print('Share handler: Link modal closed with result: $value');
+              // Share flow ends after modal is dismissed (save or cancel)
+              ShareFlow.active.value = false;
             });
       });
     } else {
@@ -88,6 +94,7 @@ void _handleSharedMedia(SharedMedia media) async {
             )
             .then((value) {
               print('Share handler: Text modal closed with result: $value');
+              ShareFlow.active.value = false;
             });
       });
     }
@@ -135,6 +142,7 @@ void _handleSharedMedia(SharedMedia media) async {
               .then((value) {
                 // Log the result of the modal closing
                 print('Share handler: Image modal closed with result: $value');
+                ShareFlow.active.value = false;
               });
         });
       } else {
@@ -156,6 +164,7 @@ void _handleSharedMedia(SharedMedia media) async {
   else {
     print('Share handler: No supported content found in shared media');
     _showUnsupportedTypeMessage(nav.context, "Unsupported share type");
+    ShareFlow.active.value = false;
   }
 }
 

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -27,6 +28,8 @@ class Cards extends Table {
   TextColumn get url => text().nullable()();
   TextColumn get transcript =>
       text().nullable()(); // Added for YouTube transcripts
+  TextColumn get metadata =>
+      text().nullable()(); // Added for additional structured data
   IntColumn get spaceId => integer().nullable().references(Spaces, #id)();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
@@ -42,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
       _instance ??= AppDatabase._internal(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -65,9 +68,14 @@ class AppDatabase extends _$AppDatabase {
         );
       }
 
-      if (from == 2) {
+      if (from <= 2) {
         // In version 3, we're adding YouTube transcript support
         await customStatement('ALTER TABLE cards ADD COLUMN transcript TEXT');
+      }
+
+      if (from <= 3) {
+        // In version 4, we're adding metadata column for structured data
+        await customStatement('ALTER TABLE cards ADD COLUMN metadata TEXT');
       }
     },
   );
@@ -150,6 +158,18 @@ extension SpaceCompanionMapper on SpaceEntity {
 // Manual mapping functions to use until code generation is complete
 // These will be replaced by the extensions above after running the generator
 CardEntity mapRowToCardEntity(Map<String, dynamic> row) {
+  Map<String, dynamic>? metadataMap;
+
+  if (row['metadata'] != null) {
+    try {
+      metadataMap = Map<String, dynamic>.from(
+        json.decode(row['metadata'] as String),
+      );
+    } catch (e) {
+      print('Error parsing metadata JSON: $e');
+    }
+  }
+
   return CardEntity(
     id: row['id'] as int?,
     type: row['type'] as String,
@@ -157,6 +177,8 @@ CardEntity mapRowToCardEntity(Map<String, dynamic> row) {
     body: row['body'] as String?,
     imagePath: row['image_path'] as String?,
     url: row['url'] as String?,
+    transcript: row['transcript'] as String?,
+    metadata: metadataMap,
     spaceId: row['space_id'] as int?,
     createdAt: row['created_at'] as int,
     updatedAt: row['updated_at'] as int,

@@ -364,7 +364,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
     try {
       final url = event.url.trim();
       final youtubeService = YouTubeService(
-        apiKey: 'AIzaSyCZxtiHP3c0XzKvxn-mW9lKYMK-OugRymI',
+  apiKey: 'REDACTED_API_KEY',
       );
 
       // Check if this is a YouTube URL
@@ -394,7 +394,7 @@ class AddCardBloc extends Bloc<AddCardEvent, AddCardState> {
       try {
         // Create a YouTubeService instance just for web page title fetching
         final youtubeService = YouTubeService(
-          apiKey: 'AIzaSyCZxtiHP3c0XzKvxn-mW9lKYMK-OugRymI',
+          apiKey: 'REDACTED_API_KEY',
         );
         final fetchedTitle = await youtubeService.fetchWebPageTitle(url);
         if (fetchedTitle != null && fetchedTitle.isNotEmpty) {
@@ -11506,7 +11506,7 @@ class _StatelessCardWrapper extends StatelessWidget {
     if (card.type == 'link' && card.url != null) {
       // YouTube link with thumbnail
       final youtubeService = YouTubeService(
-        apiKey: 'AIzaSyCZxtiHP3c0XzKvxn-mW9lKYMK-OugRymI',
+  apiKey: 'REDACTED_API_KEY',
       );
       if (youtubeService.isYoutubeUrl(card.url!)) {
         // YouTube link indicator

@@ -193,6 +193,14 @@ class CardRepository {
     return _database.cardDao.deleteCard(id);
   }
 
+  // Persist refreshed YouTube metadata for any card matching the videoId
+  Future<void> updateYouTubeMetadataByVideoId(
+    String videoId,
+    Map<String, dynamic> metadata,
+  ) async {
+    await _database.cardDao.updateCardMetadataByVideoId(videoId, metadata);
+  }
+
   /// Create a sample card for testing
   Future<int> createSampleCard() {
     final now = DateTime.now().millisecondsSinceEpoch;

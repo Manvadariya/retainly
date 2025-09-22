@@ -6,7 +6,6 @@ import '../theme/app_theme.dart';
 import '../../bloc/main_grid/main_grid_bloc.dart';
 import '../../bloc/main_grid/main_grid_event.dart';
 import '../../data/repository/card_repository.dart';
-import '../../data/repository/space_repository.dart';
 import '../widgets/grid/main_grid_view.dart';
 import '../widgets/tabs/spaces_tab.dart';
 import '../widgets/card/add_text_card_modal.dart';

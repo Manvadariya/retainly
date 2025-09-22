@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../../data/card_entity.dart';
 import '../../ui/theme/app_theme.dart';
+import '../../utils/youtube_card_helper.dart';
 
 class CardGrid extends StatelessWidget {
   final List<CardEntity> cards;
@@ -58,7 +59,22 @@ class CardGrid extends StatelessWidget {
     final isLink = card.type == 'link' && card.url != null;
 
     return InkWell(
-      onTap: () => onCardSelected(card),
+      onTap: () {
+        // Check if it's a YouTube card
+        if (card.type == 'link' && card.url != null) {
+          if (YouTubeCardHelper.isYouTubeCard(card)) {
+            final metadata = YouTubeCardHelper.extractMetadata(card);
+            if (metadata != null) {
+              // We need to call the callback since we don't have direct access to context
+              onCardSelected(card);
+              return;
+            }
+          }
+        }
+
+        // Default behavior for non-YouTube cards
+        onCardSelected(card);
+      },
       onLongPress: onCardLongPress != null
           ? () => onCardLongPress!(card)
           : null,

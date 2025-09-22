@@ -47,3 +47,7 @@ class TitleFetched extends AddCardState {
   @override
   List<Object> get props => [title];
 }
+
+class YouTubeMetadataLoading extends AddCardState {
+  const YouTubeMetadataLoading();
+}

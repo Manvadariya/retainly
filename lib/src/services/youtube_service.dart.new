@@ -1,0 +1,636 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html_parser;
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
+import 'package:xml/xml.dart' as xml;
+import '../models/youtube_metadata.dart';
+
+/// A service for fetching and processing YouTube video metadata.
+class YouTubeService {
+  /// Optional YouTube API key for using YouTube Data API
+  final String? apiKey;
+
+  /// Base URL for YouTube API requests
+  static const String _apiBaseUrl = 'https://www.googleapis.com/youtube/v3';
+
+  /// Creates a new YouTubeService instance
+  /// 
+  /// [apiKey] Optional API key for YouTube Data API
+  YouTubeService({this.apiKey});
+
+  /// Checks if a given URL is a YouTube URL.
+  bool isYoutubeUrl(String url) {
+    final normalizedUrl = url.toLowerCase();
+
+    // Check for common YouTube URL patterns
+    return normalizedUrl.contains('youtube.com/watch') ||
+        normalizedUrl.contains('youtu.be/') ||
+        normalizedUrl.contains('youtube.com/shorts/') ||
+        normalizedUrl.contains('youtube.com/v/');
+  }
+
+  /// Extracts the video ID from a YouTube URL.
+  /// Returns null if the video ID cannot be extracted.
+  String? extractVideoId(String url) {
+    // Handle youtu.be short links
+    RegExp youtubeBe = RegExp(r'youtu\.be/([a-zA-Z0-9_-]{11})');
+    Match? youtubeBeMatch = youtubeBe.firstMatch(url);
+    if (youtubeBeMatch != null && youtubeBeMatch.groupCount >= 1) {
+      return youtubeBeMatch.group(1);
+    }
+
+    // Handle youtube.com/shorts/ links
+    RegExp youtubeShorts = RegExp(r'youtube\.com/shorts/([a-zA-Z0-9_-]{11})');
+    Match? youtubeShortsMatch = youtubeShorts.firstMatch(url);
+    if (youtubeShortsMatch != null && youtubeShortsMatch.groupCount >= 1) {
+      return youtubeShortsMatch.group(1);
+    }
+
+    // Handle youtube.com/v/ links
+    RegExp youtubeV = RegExp(r'youtube\.com/v/([a-zA-Z0-9_-]{11})');
+    Match? youtubeVMatch = youtubeV.firstMatch(url);
+    if (youtubeVMatch != null && youtubeVMatch.groupCount >= 1) {
+      return youtubeVMatch.group(1);
+    }
+
+    // Handle youtube.com/watch?v= links
+    try {
+      Uri uri = Uri.parse(url);
+      if (uri.host.contains('youtube.com') && uri.path.contains('watch')) {
+        return uri.queryParameters['v'];
+      }
+    } catch (e) {
+      print('Error parsing YouTube URL: $e');
+    }
+
+    // Try a generic regex as fallback for any URL containing an 11-character ID
+    RegExp genericIdPattern = RegExp(
+      r'(?:^|[^a-zA-Z0-9_-])([a-zA-Z0-9_-]{11})(?:$|[^a-zA-Z0-9_-])',
+    );
+    Match? genericMatch = genericIdPattern.firstMatch(url);
+    if (genericMatch != null && genericMatch.groupCount >= 1) {
+      return genericMatch.group(1);
+    }
+
+    return null;
+  }
+
+  /// Fetches a YouTube video thumbnail and saves it locally.
+  /// Returns the local path to the saved thumbnail.
+  Future<String?> fetchThumbnail(String videoId) async {
+    try {
+      // Try the maxresdefault quality first (highest quality)
+      String thumbnailUrl =
+          'https://img.youtube.com/vi/$videoId/maxresdefault.jpg';
+
+      final response = await http.get(Uri.parse(thumbnailUrl));
+
+      // If maxres not available, try hqdefault
+      if (response.statusCode != 200) {
+        thumbnailUrl = 'https://img.youtube.com/vi/$videoId/hqdefault.jpg';
+        final fallbackResponse = await http.get(Uri.parse(thumbnailUrl));
+
+        if (fallbackResponse.statusCode != 200) {
+          print('Failed to fetch YouTube thumbnail for video ID: $videoId');
+          return null;
+        }
+
+        return await _saveThumbnailToFile(videoId, fallbackResponse.bodyBytes);
+      }
+
+      return await _saveThumbnailToFile(videoId, response.bodyBytes);
+    } catch (e) {
+      print('Error fetching YouTube thumbnail: $e');
+      return null;
+    }
+  }
+
+  /// Save the thumbnail bytes to a local file and return the file path
+  Future<String?> _saveThumbnailToFile(
+    String videoId,
+    List<int> imageBytes,
+  ) async {
+    try {
+      final directory = await getTemporaryDirectory();
+      final filePath = '${directory.path}/${const Uuid().v4()}_$videoId.jpg';
+
+      final File file = File(filePath);
+      await file.writeAsBytes(imageBytes);
+
+      print('Thumbnail saved to: $filePath');
+      return filePath;
+    } catch (e) {
+      print('Error saving thumbnail to file: $e');
+      return null;
+    }
+  }
+
+  /// Fetches complete metadata for a YouTube video by its URL.
+  /// Returns a YouTubeMetadata object containing all available metadata.
+  Future<YouTubeMetadata?> fetchMetadata(String url) async {
+    final videoId = extractVideoId(url);
+    if (videoId == null) {
+      print('Could not extract video ID from URL: $url');
+      return null;
+    }
+
+    // First try to use YouTube Data API if available (provides most complete metadata)
+    if (apiKey != null) {
+      try {
+        final apiMetadata = await _fetchMetadataWithAPI(videoId);
+        if (apiMetadata != null) {
+          print('Successfully fetched YouTube metadata with API');
+          return apiMetadata;
+        }
+      } catch (e) {
+        print('Error fetching YouTube metadata via API: $e');
+      }
+    }
+
+    // Fall back to HTML scraping approach
+    try {
+      final scrapedMetadata = await _fetchMetadataFromPage(videoId);
+      if (scrapedMetadata != null) {
+        print('Successfully fetched YouTube metadata from page');
+        return scrapedMetadata;
+      }
+    } catch (e) {
+      print('Error fetching YouTube metadata from page: $e');
+    }
+
+    // Last resort: create minimal metadata with what we know
+    try {
+      final title = await _fetchBasicTitle(videoId);
+      final thumbnailUrl = await fetchThumbnail(videoId);
+
+      return YouTubeMetadata(
+        videoId: videoId,
+        title: title ?? 'YouTube Video',
+        author: 'Unknown',
+        description: '',
+        thumbnailUrl: thumbnailUrl ?? 'https://img.youtube.com/vi/$videoId/default.jpg',
+        publishDate: '',
+        category: '',
+        tags: [],
+      );
+    } catch (e) {
+      print('Error creating fallback YouTube metadata: $e');
+      return null;
+    }
+  }
+
+  /// Fetch transcript for a YouTube video.
+  /// Returns the transcript as a string, or null if no transcript is available.
+  Future<String?> fetchTranscript(String videoId) async {
+    // Try getting auto-generated captions first (most commonly available)
+    try {
+      final autoTranscript = await _fetchAutoGeneratedTranscript(videoId);
+      if (autoTranscript != null && autoTranscript.isNotEmpty) {
+        return autoTranscript;
+      }
+    } catch (e) {
+      print('Error fetching auto-generated transcript: $e');
+    }
+
+    // Try getting regular captions
+    try {
+      final regularTranscript = await _fetchRegularTranscript(videoId);
+      if (regularTranscript != null && regularTranscript.isNotEmpty) {
+        return regularTranscript;
+      }
+    } catch (e) {
+      print('Error fetching regular transcript: $e');
+    }
+
+    // If API is available, try that as well
+    if (apiKey != null) {
+      try {
+        final apiTranscript = await _fetchTranscriptWithAPI(videoId);
+        if (apiTranscript != null && apiTranscript.isNotEmpty) {
+          return apiTranscript;
+        }
+      } catch (e) {
+        print('Error fetching transcript via API: $e');
+      }
+    }
+
+    return null;
+  }
+
+  /// Fetch basic title for a YouTube video.
+  Future<String?> _fetchBasicTitle(String videoId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://www.youtube.com/watch?v=$videoId'),
+      );
+      
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final document = html_parser.parse(response.body);
+      final titleElements = document.getElementsByTagName('title');
+      
+      if (titleElements.isNotEmpty) {
+        String title = titleElements.first.text;
+        // Clean up the title (remove " - YouTube" suffix if present)
+        if (title.endsWith(' - YouTube')) {
+          title = title.substring(0, title.length - 10);
+        }
+        return title;
+      }
+      
+      return null;
+    } catch (e) {
+      print('Error fetching basic title: $e');
+      return null;
+    }
+  }
+
+  /// Fetch metadata using the YouTube Data API.
+  Future<YouTubeMetadata?> _fetchMetadataWithAPI(String videoId) async {
+    if (apiKey == null) {
+      return null;
+    }
+
+    final url = '$_apiBaseUrl/videos?part=snippet,contentDetails,statistics,status&id=$videoId&key=$apiKey';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode != 200) {
+      print('Failed to fetch video details: ${response.statusCode}');
+      return null;
+    }
+
+    final data = json.decode(response.body);
+
+    if (data['items'] == null || data['items'].isEmpty) {
+      print('No video details found for video ID: $videoId');
+      return null;
+    }
+
+    final item = data['items'][0];
+    final snippet = item['snippet'];
+    final statistics = item['statistics'];
+    final contentDetails = item['contentDetails'];
+
+    // Extract duration in seconds from ISO 8601 duration format
+    int? lengthSeconds;
+    try {
+      final duration = contentDetails['duration']; // PT1H2M3S format
+      // Simple parsing for common formats
+      final hours = RegExp(r'(\d+)H').firstMatch(duration)?.group(1);
+      final minutes = RegExp(r'(\d+)M').firstMatch(duration)?.group(1);
+      final seconds = RegExp(r'(\d+)S').firstMatch(duration)?.group(1);
+      
+      lengthSeconds = (hours != null ? int.parse(hours) * 3600 : 0) +
+          (minutes != null ? int.parse(minutes) * 60 : 0) +
+          (seconds != null ? int.parse(seconds) : 0);
+    } catch (e) {
+      print('Error parsing duration: $e');
+    }
+    
+    // Get highest resolution thumbnail
+    String thumbnailUrl = '';
+    final thumbnails = snippet['thumbnails'];
+    if (thumbnails != null) {
+      if (thumbnails['maxres'] != null) {
+        thumbnailUrl = thumbnails['maxres']['url'];
+      } else if (thumbnails['standard'] != null) {
+        thumbnailUrl = thumbnails['standard']['url'];
+      } else if (thumbnails['high'] != null) {
+        thumbnailUrl = thumbnails['high']['url'];
+      } else if (thumbnails['medium'] != null) {
+        thumbnailUrl = thumbnails['medium']['url'];
+      } else if (thumbnails['default'] != null) {
+        thumbnailUrl = thumbnails['default']['url'];
+      }
+    }
+
+    return YouTubeMetadata(
+      videoId: videoId,
+      title: snippet['title'] ?? 'Unknown Title',
+      author: snippet['channelTitle'] ?? 'Unknown Channel',
+      description: snippet['description'] ?? '',
+      thumbnailUrl: thumbnailUrl,
+      publishDate: snippet['publishedAt'] ?? '',
+      category: snippet['categoryId'] != null ? 'Category ${snippet['categoryId']}' : '',
+      viewCount: statistics != null && statistics['viewCount'] != null
+          ? int.tryParse(statistics['viewCount'])
+          : null,
+      lengthSeconds: lengthSeconds,
+      tags: snippet['tags'] != null
+          ? List<String>.from(snippet['tags'])
+          : [],
+    );
+  }
+
+  /// Fetch metadata by scraping the YouTube page.
+  Future<YouTubeMetadata?> _fetchMetadataFromPage(String videoId) async {
+    final url = 'https://www.youtube.com/watch?v=$videoId';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode != 200) {
+      print('Failed to fetch YouTube page: ${response.statusCode}');
+      return null;
+    }
+
+    final document = html_parser.parse(response.body);
+    
+    // Try to extract metadata from script tags containing JSON data
+    final scriptTags = document.getElementsByTagName('script');
+    
+    for (var script in scriptTags) {
+      final content = script.text;
+      
+      if (content.contains('"videoDetails"')) {
+        // Extract the JSON data using regex
+        final regex = RegExp(r'("videoDetails":\s*\{.*?\}\}),');
+        final match = regex.firstMatch(content);
+        
+        if (match != null) {
+          try {
+            // Add surrounding braces to make it valid JSON
+            final jsonStr = '{${match.group(1)}}';
+            final data = json.decode(jsonStr);
+            
+            final videoDetails = data['videoDetails'];
+            
+            if (videoDetails != null) {
+              // Extract the thumbnail URL
+              String thumbnailUrl = '';
+              if (videoDetails['thumbnail'] != null && 
+                  videoDetails['thumbnail']['thumbnails'] != null) {
+                final thumbnails = videoDetails['thumbnail']['thumbnails'];
+                if (thumbnails is List && thumbnails.isNotEmpty) {
+                  // Use the highest resolution thumbnail (last in the list)
+                  thumbnailUrl = thumbnails.last['url'];
+                }
+              }
+              
+              return YouTubeMetadata(
+                videoId: videoId,
+                title: videoDetails['title'] ?? 'Unknown Title',
+                author: videoDetails['author'] ?? 'Unknown Channel',
+                description: videoDetails['shortDescription'] ?? '',
+                thumbnailUrl: thumbnailUrl,
+                publishDate: '', // Not easily available in this JSON
+                category: '', // Not easily available in this JSON
+                viewCount: videoDetails['viewCount'] != null 
+                    ? int.tryParse(videoDetails['viewCount'])
+                    : null,
+                lengthSeconds: videoDetails['lengthSeconds'] != null
+                    ? int.tryParse(videoDetails['lengthSeconds'])
+                    : null,
+                tags: videoDetails['keywords'] != null
+                    ? List<String>.from(videoDetails['keywords'])
+                    : [],
+              );
+            }
+          } catch (e) {
+            print('Error parsing JSON from script tag: $e');
+          }
+        }
+      }
+    }
+    
+    // Fall back to basic metadata extraction
+    final title = _extractFromMeta(document, 'title') ?? 
+                 _extractFromMeta(document, 'og:title');
+    final description = _extractFromMeta(document, 'description') ?? 
+                       _extractFromMeta(document, 'og:description');
+    final author = _extractFromMeta(document, 'author');
+    
+    return YouTubeMetadata(
+      videoId: videoId,
+      title: title ?? 'YouTube Video',
+      author: author ?? 'Unknown Channel',
+      description: description ?? '',
+      thumbnailUrl: 'https://img.youtube.com/vi/$videoId/hqdefault.jpg',
+      publishDate: '',
+      category: '',
+      tags: [],
+    );
+  }
+
+  /// Extract content from meta tags in HTML
+  String? _extractFromMeta(var document, String property) {
+    final metaTags = document.getElementsByTagName('meta');
+    for (var tag in metaTags) {
+      if (tag.attributes['property'] == property || 
+          tag.attributes['name'] == property) {
+        return tag.attributes['content'];
+      }
+    }
+    return null;
+  }
+
+  /// Fetch auto-generated captions from YouTube.
+  Future<String?> _fetchAutoGeneratedTranscript(String videoId) async {
+    try {
+      // Try direct auto-caption URL
+      final autoUrl = 'https://www.youtube.com/api/timedtext?lang=en&v=$videoId&kind=asr';
+      final response = await http.get(Uri.parse(autoUrl));
+
+      if (response.statusCode != 200 || response.body.isEmpty) {
+        return null;
+      }
+
+      try {
+        // Parse as XML
+        final document = xml.XmlDocument.parse(response.body);
+        final textElements = document.findAllElements('text');
+
+        StringBuffer transcript = StringBuffer();
+        for (var element in textElements) {
+          if (element.innerText.isNotEmpty) {
+            transcript.writeln(element.innerText);
+          }
+        }
+
+        final result = transcript.toString();
+        if (result.isNotEmpty) {
+          return result;
+        }
+      } catch (e) {
+        // If XML parsing fails, try HTML parsing
+        final document = html_parser.parse(response.body);
+        final textElements = document.getElementsByTagName('text');
+
+        StringBuffer transcript = StringBuffer();
+        for (var element in textElements) {
+          if (element.text.isNotEmpty) {
+            transcript.writeln(element.text);
+          }
+        }
+
+        final result = transcript.toString();
+        if (result.isNotEmpty) {
+          return result;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('Error fetching auto-generated captions: $e');
+      return null;
+    }
+  }
+
+  /// Fetch regular captions from YouTube.
+  Future<String?> _fetchRegularTranscript(String videoId) async {
+    try {
+      // Fetch the video page to extract caption tracks
+      final videoUrl = 'https://www.youtube.com/watch?v=$videoId&cc_load_policy=1';
+      final response = await http.get(Uri.parse(videoUrl));
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      // Try to find the timedtext URL
+      final videoPageContent = response.body;
+
+      // Extract the captionTracks section
+      final regex = RegExp(r'"captionTracks":(\[.*?\])');
+      final match = regex.firstMatch(videoPageContent);
+
+      if (match == null || match.groupCount < 1) {
+        return null;
+      }
+
+      // Extract the JSON string and parse it
+      final captionsJson = match.group(1)!;
+
+      // Try to find English captions first
+      RegExp baseUrlRegex = RegExp(r'"baseUrl":"(.*?)".*?"languageCode":"en"');
+      Match? baseUrlMatch = baseUrlRegex.firstMatch(captionsJson);
+
+      // If English not found, try any language
+      if (baseUrlMatch == null) {
+        baseUrlRegex = RegExp(r'"baseUrl":"(.*?)"');
+        baseUrlMatch = baseUrlRegex.firstMatch(captionsJson);
+      }
+
+      if (baseUrlMatch == null) {
+        return null;
+      }
+
+      String captionUrl = baseUrlMatch.group(1) ?? '';
+      captionUrl = captionUrl.replaceAll('\\u0026', '&');
+
+      // Fetch the captions XML
+      final captionsResponse = await http.get(Uri.parse(captionUrl));
+
+      if (captionsResponse.statusCode != 200) {
+        return null;
+      }
+
+      try {
+        // Parse as XML
+        final document = xml.XmlDocument.parse(captionsResponse.body);
+        final textElements = document.findAllElements('text');
+
+        StringBuffer transcript = StringBuffer();
+        for (var element in textElements) {
+          if (element.innerText.isNotEmpty) {
+            transcript.writeln(element.innerText);
+          }
+        }
+
+        final result = transcript.toString();
+        if (result.isNotEmpty) {
+          return result;
+        }
+      } catch (e) {
+        // Fall back to HTML parsing if XML parsing fails
+        final document = html_parser.parse(captionsResponse.body);
+        final textElements = document.getElementsByTagName('text');
+
+        StringBuffer transcript = StringBuffer();
+        for (var element in textElements) {
+          if (element.text.isNotEmpty) {
+            transcript.writeln(element.text);
+          }
+        }
+
+        final result = transcript.toString();
+        if (result.isNotEmpty) {
+          return result;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('Error fetching regular transcript: $e');
+      return null;
+    }
+  }
+
+  /// Fetch transcript using the YouTube Data API.
+  Future<String?> _fetchTranscriptWithAPI(String videoId) async {
+    if (apiKey == null) {
+      return null;
+    }
+
+    try {
+      // Get caption tracks for the video
+      final captionsUrl =
+          '$_apiBaseUrl/captions?videoId=$videoId&part=snippet&key=$apiKey';
+
+      final response = await http.get(Uri.parse(captionsUrl));
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final captionsData = json.decode(response.body);
+
+      if (captionsData['items'] == null || captionsData['items'].isEmpty) {
+        return null;
+      }
+
+      // Try to find English captions first
+      var captionId = '';
+      for (var item in captionsData['items']) {
+        final language = item['snippet']['language'];
+        if (language == 'en') {
+          captionId = item['id'];
+          break;
+        }
+      }
+      
+      // If no English captions, use the first one available
+      if (captionId.isEmpty && captionsData['items'].isNotEmpty) {
+        captionId = captionsData['items'][0]['id'];
+      }
+
+      if (captionId.isEmpty) {
+        return null;
+      }
+
+      // Fetch the actual caption track content
+      final captionDownloadUrl =
+          '$_apiBaseUrl/captions/$captionId?key=$apiKey';
+
+      final captionResponse = await http.get(
+        Uri.parse(captionDownloadUrl),
+        headers: {'Accept': 'text/plain'},
+      );
+
+      if (captionResponse.statusCode != 200) {
+        return null;
+      }
+
+      // Basic processing to clean up the transcript
+      return utf8.decode(captionResponse.bodyBytes)
+          .replaceAll(RegExp(r'\d+:\d+:\d+\.\d+'), '')
+          .replaceAll(RegExp(r'[\r\n]+'), '\n')
+          .trim();
+    } catch (e) {
+      print('Error fetching transcript via API: $e');
+      return null;
+    }
+  }
+}

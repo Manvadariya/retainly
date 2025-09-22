@@ -41,6 +41,18 @@ class LandingScreen extends StatelessWidget {
                   child: const Text('Open Memories'),
                 ),
               ),
+              const SizedBox(height: 12),
+              // Version info
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  'Version 1.0.0',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey.withOpacity(0.5),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ],
           ),
         ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'landing_screen.dart';
+import '../../share_flow.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,6 +14,8 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _fade;
+  Timer? _navTimer;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -23,8 +27,41 @@ class _SplashScreenState extends State<SplashScreen>
     _fade = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
 
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+    // React to share state changes; navigate after 2s when idle
+    ShareFlow.active.addListener(_onShareStateChanged);
+    ShareFlow.pendingInitial.addListener(_onShareStateChanged);
+
+    // Evaluate immediately in case there is no share flow
+    _scheduleMaybeNavigate();
+  }
+
+  @override
+  void dispose() {
+    _navTimer?.cancel();
+    ShareFlow.active.removeListener(_onShareStateChanged);
+    ShareFlow.pendingInitial.removeListener(_onShareStateChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onShareStateChanged() {
+    _scheduleMaybeNavigate();
+  }
+
+  void _scheduleMaybeNavigate() {
+    if (!mounted || _navigated) return;
+
+    // If share flow is active or still detecting initial share, wait.
+    if (ShareFlow.active.value || ShareFlow.pendingInitial.value) {
+      _navTimer?.cancel();
+      return;
+    }
+
+    // Otherwise, ensure we navigate after showing splash for ~2 seconds
+    _navTimer?.cancel();
+    _navTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted || _navigated) return;
+      _navigated = true;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           settings: const RouteSettings(name: '/landing'),
@@ -37,12 +74,6 @@ class _SplashScreenState extends State<SplashScreen>
         ),
       );
     });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
   }
 
   @override
